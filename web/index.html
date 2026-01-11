@@ -37,14 +37,6 @@
               <option value="all">All</option>
             </select>
           </div>
-          <div class="control">
-            <label for="fieldKey">Field</label>
-            <input id="fieldKey" type="text" placeholder="key (e.g. channel)" />
-          </div>
-          <div class="control">
-            <label for="fieldValue">Value</label>
-            <input id="fieldValue" type="text" placeholder="contains" />
-          </div>
         </div>
         <div class="toggle-row">
           <div class="toggles">
@@ -88,6 +80,31 @@
         <section class="log-panel">
           <div class="panel-header">
             <div class="panel-title">Logs</div>
+            <div class="log-filters" id="logFilters">
+              <div class="filter-tag filter-input-tag" id="filterInputTag">
+                <input
+                  id="filterInput"
+                  class="filter-input"
+                  type="text"
+                  placeholder="Filter"
+                  autocomplete="off"
+                  aria-label="Filter"
+                />
+                <span class="filter-help" aria-label="Filter syntax help">
+                  ?
+                  <span class="filter-help-tooltip" role="tooltip">
+                    <span class="filter-help-title">Examples</span>
+                    <span class="filter-help-row"><code>.level == "error"</code></span>
+                    <span class="filter-help-row"><code>.channel == "action"</code></span>
+                    <span class="filter-help-row"><code>.session</code> (field exists)</span>
+                    <span class="filter-help-row"><code>.duration >= 120</code></span>
+                    <span class="filter-help-row"><code>.message contains "timeout"</code></span>
+                    <span class="filter-help-row"><code>select(.user.id == "42")</code></span>
+                    <span class="filter-help-row"><code>.tags[0] == "api"</code></span>
+                  </span>
+                </span>
+              </div>
+            </div>
           </div>
           <div class="log-list" id="logList"></div>
         </section>

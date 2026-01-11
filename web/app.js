@@ -26,8 +26,10 @@ const state = {
   minLevel: "all",
   channel: "all",
   search: "",
-  fieldKey: "",
-  fieldValue: "",
+  filters: [],
+  nextFilterId: 1,
+  draftFilter: null,
+  draftFilterRaw: "",
   filterKey: "",
   newSincePause: 0,
   clientMax: 5000,
@@ -41,10 +43,16 @@ const state = {
 
 const dom = {};
 const statusClassNames = ["status-green", "status-orange", "status-red", "status-blue"];
+const filterInputDelay = 150;
+let filterInputTimer = null;
+let pendingFilterRaw = "";
+let pendingFilterExpression = null;
+const filterStorageKey = "zlog-filters";
 
 function init() {
   cacheDom();
   initTheme();
+  loadStoredFilters();
   bindEvents();
   updateStatus("connecting", "waiting for stream");
   loadConfig();
@@ -53,6 +61,7 @@ function init() {
   dom.logList.classList.toggle("alt", state.altRows);
   dom.logList.classList.toggle("tags-on", state.showTags);
   dom.logList.classList.toggle("channel-on", state.showChannel);
+  renderFilterTags();
 }
 
 function cacheDom() {
@@ -61,8 +70,7 @@ function cacheDom() {
   dom.searchInput = document.getElementById("searchInput");
   dom.levelSelect = document.getElementById("levelSelect");
   dom.channelSelect = document.getElementById("channelSelect");
-  dom.fieldKey = document.getElementById("fieldKey");
-  dom.fieldValue = document.getElementById("fieldValue");
+  dom.filterInput = document.getElementById("filterInput");
   dom.toggleAuto = document.getElementById("toggleAuto");
   dom.toggleWrap = document.getElementById("toggleWrap");
   dom.toggleAlt = document.getElementById("toggleAlt");
@@ -89,6 +97,8 @@ function cacheDom() {
   dom.detailRaw = document.getElementById("detailRaw");
   dom.copyRawBtn = document.getElementById("copyRawBtn");
   dom.bottomIndicator = document.getElementById("bottomIndicator");
+  dom.logFilters = document.getElementById("logFilters");
+  dom.filterInputTag = document.getElementById("filterInputTag");
 }
 
 function bindEvents() {
@@ -111,14 +121,15 @@ function bindEvents() {
     renderAll();
   });
 
-  dom.fieldKey.addEventListener("input", () => {
-    state.fieldKey = dom.fieldKey.value.trim();
-    renderAll();
+  dom.filterInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addFilterFromInput();
+    }
   });
-
-  dom.fieldValue.addEventListener("input", () => {
-    state.fieldValue = dom.fieldValue.value.trim().toLowerCase();
-    renderAll();
+  dom.filterInput.addEventListener("input", () => {
+    dom.filterInput.setCustomValidity("");
+    handleFilterInputChange();
   });
 
   dom.toggleAuto.addEventListener("change", () => {
@@ -221,6 +232,56 @@ function setTheme(isDark, persist = true) {
     } catch (err) {
       // Ignore storage failures.
     }
+  }
+}
+
+function loadStoredFilters() {
+  let stored = "";
+  try {
+    stored = localStorage.getItem(filterStorageKey) || "";
+  } catch (err) {
+    stored = "";
+  }
+  if (!stored) {
+    return;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(stored);
+  } catch (err) {
+    return;
+  }
+  if (!Array.isArray(parsed)) {
+    return;
+  }
+  const nextFilters = [];
+  for (const rawValue of parsed) {
+    if (typeof rawValue !== "string") {
+      continue;
+    }
+    const value = rawValue.trim();
+    if (!value) {
+      continue;
+    }
+    const result = parseFilterExpression(value);
+    if (!result.ok) {
+      continue;
+    }
+    nextFilters.push({
+      id: state.nextFilterId++,
+      raw: value,
+      expression: result.expression,
+    });
+  }
+  state.filters = nextFilters;
+}
+
+function persistFilters() {
+  try {
+    const payload = state.filters.map((filter) => filter.raw);
+    localStorage.setItem(filterStorageKey, JSON.stringify(payload));
+  } catch (err) {
+    // Ignore storage failures.
   }
 }
 
@@ -351,11 +412,11 @@ function filterKey() {
     state.minLevel,
     state.channel,
     state.search,
-    state.fieldKey,
-    state.fieldValue,
     state.showPlain,
     state.showChannel,
     state.showTags,
+    state.filters.map((filter) => filter.raw).join(","),
+    state.draftFilterRaw,
   ].join("|");
 }
 
@@ -398,25 +459,529 @@ function passesFilters(entry) {
     }
   }
 
-  if (state.fieldKey) {
-    const fieldValue = getFieldValue(entry, state.fieldKey);
-    if (fieldValue === undefined) {
-      return false;
-    }
-    if (state.fieldValue) {
-      const normalized = String(fieldValue).toLowerCase();
-      if (!normalized.includes(state.fieldValue)) {
+  if (state.filters.length || state.draftFilter) {
+    const scope = buildFilterScope(entry);
+    for (const filter of state.filters) {
+      if (!evaluateFilterExpression(filter.expression, scope)) {
         return false;
       }
     }
-  } else if (state.fieldValue) {
-    const haystack = String(entry.raw || "").toLowerCase();
-    if (!haystack.includes(state.fieldValue)) {
+    if (state.draftFilter && !evaluateFilterExpression(state.draftFilter, scope)) {
       return false;
     }
   }
 
   return true;
+}
+
+function handleFilterInputChange() {
+  if (!dom.filterInput) {
+    return;
+  }
+  const raw = dom.filterInput.value.trim();
+  if (!raw) {
+    setFilterInputState("neutral");
+    clearDraftFilter();
+    return;
+  }
+  const parsed = parseFilterExpression(raw);
+  if (!parsed.ok) {
+    setFilterInputState("invalid");
+    clearDraftFilter();
+    return;
+  }
+  setFilterInputState("neutral");
+  scheduleDraftFilterUpdate(raw, parsed.expression);
+}
+
+function updateDraftFilter(raw, expression) {
+  if (state.draftFilterRaw === raw) {
+    state.draftFilter = expression;
+    return;
+  }
+  state.draftFilterRaw = raw;
+  state.draftFilter = expression;
+  renderAll();
+}
+
+function clearDraftFilter(shouldRender = true) {
+  clearPendingFilterUpdate();
+  if (!state.draftFilterRaw) {
+    state.draftFilter = null;
+    return;
+  }
+  state.draftFilter = null;
+  state.draftFilterRaw = "";
+  if (shouldRender) {
+    renderAll();
+  }
+}
+
+function scheduleDraftFilterUpdate(raw, expression) {
+  clearPendingFilterUpdate();
+  pendingFilterRaw = raw;
+  pendingFilterExpression = expression;
+  filterInputTimer = setTimeout(() => {
+    const nextRaw = pendingFilterRaw;
+    const nextExpression = pendingFilterExpression;
+    clearPendingFilterUpdate();
+    updateDraftFilter(nextRaw, nextExpression);
+  }, filterInputDelay);
+}
+
+function clearPendingFilterUpdate() {
+  if (filterInputTimer) {
+    clearTimeout(filterInputTimer);
+    filterInputTimer = null;
+  }
+  pendingFilterRaw = "";
+  pendingFilterExpression = null;
+}
+
+function setFilterInputState(stateName) {
+  if (!dom.filterInputTag) {
+    return;
+  }
+  dom.filterInputTag.classList.toggle("invalid", stateName === "invalid");
+}
+
+function addFilterFromInput() {
+  const raw = dom.filterInput.value.trim();
+  if (!raw) {
+    return;
+  }
+  const parsed =
+    state.draftFilterRaw === raw && state.draftFilter
+      ? { ok: true, expression: state.draftFilter }
+      : parseFilterExpression(raw);
+  if (!parsed.ok) {
+    dom.filterInput.setCustomValidity(parsed.error);
+    dom.filterInput.reportValidity();
+    return;
+  }
+  dom.filterInput.setCustomValidity("");
+  clearPendingFilterUpdate();
+  state.filters.push({
+    id: state.nextFilterId++,
+    raw,
+    expression: parsed.expression,
+  });
+  persistFilters();
+  dom.filterInput.value = "";
+  setFilterInputState("neutral");
+  clearDraftFilter(false);
+  renderFilterTags();
+  renderAll();
+}
+
+function renderFilterTags() {
+  if (!dom.logFilters) {
+    return;
+  }
+  dom.logFilters.innerHTML = "";
+  const fragment = document.createDocumentFragment();
+  for (const filter of state.filters) {
+    const tag = document.createElement("div");
+    tag.className = "filter-tag";
+    const text = document.createElement("span");
+    text.className = "filter-tag-text";
+    text.textContent = filter.raw;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "filter-remove";
+    remove.textContent = "x";
+    remove.addEventListener("click", () => removeFilter(filter.id));
+    tag.append(text, remove);
+    fragment.appendChild(tag);
+  }
+  dom.logFilters.appendChild(fragment);
+  if (dom.filterInputTag) {
+    dom.logFilters.appendChild(dom.filterInputTag);
+  }
+}
+
+function removeFilter(id) {
+  state.filters = state.filters.filter((filter) => filter.id !== id);
+  persistFilters();
+  renderFilterTags();
+  renderAll();
+}
+
+function parseFilterExpression(input) {
+  const raw = input.trim();
+  if (!raw) {
+    return { ok: false, error: "Filter is empty." };
+  }
+  let expr = raw;
+  const selectMatch = expr.match(/^select\s*\((.*)\)$/);
+  if (selectMatch) {
+    expr = selectMatch[1].trim();
+  }
+  const pathResult = parsePathExpression(expr);
+  if (!pathResult.ok) {
+    return pathResult;
+  }
+  let rest = pathResult.rest.trim();
+  if (rest.startsWith("?")) {
+    rest = rest.slice(1).trim();
+  }
+  if (!rest) {
+    return { ok: true, expression: { type: "exists", path: pathResult.path } };
+  }
+  const opResult = parseOperatorAndValue(rest);
+  if (!opResult.ok) {
+    return opResult;
+  }
+  return {
+    ok: true,
+    expression: {
+      type: "compare",
+      path: pathResult.path,
+      operator: opResult.operator,
+      value: opResult.value,
+    },
+  };
+}
+
+function parsePathExpression(input) {
+  if (!input.startsWith(".")) {
+    return { ok: false, error: "Filters must start with a '.' path." };
+  }
+  let i = 1;
+  const path = [];
+  const len = input.length;
+
+  while (i < len) {
+    if (input[i] === ".") {
+      i += 1;
+    }
+    if (i >= len) {
+      break;
+    }
+    if (input[i] === "[") {
+      const result = parseBracketSegment(input, i);
+      if (!result.ok) {
+        return result;
+      }
+      path.push(result.value);
+      i = result.nextIndex;
+    } else if (input[i] === "\"" || input[i] === "'") {
+      const result = parseQuotedString(input, i);
+      if (!result.ok) {
+        return result;
+      }
+      path.push(result.value);
+      i = result.nextIndex;
+    } else if (isIdentifierChar(input[i])) {
+      const start = i;
+      while (i < len && isIdentifierChar(input[i])) {
+        i += 1;
+      }
+      path.push(input.slice(start, i));
+    } else {
+      break;
+    }
+
+    if (input[i] === "?") {
+      i += 1;
+    }
+
+    if (i >= len) {
+      break;
+    }
+    if (input[i] === "." || input[i] === "[") {
+      continue;
+    }
+    if (isOperatorStart(input[i]) || isWhitespace(input[i])) {
+      break;
+    }
+    return { ok: false, error: "Unexpected token in path." };
+  }
+
+  return { ok: true, path, rest: input.slice(i) };
+}
+
+function parseBracketSegment(input, index) {
+  let i = index + 1;
+  const len = input.length;
+  while (i < len && isWhitespace(input[i])) {
+    i += 1;
+  }
+  if (i >= len) {
+    return { ok: false, error: "Unclosed bracket in path." };
+  }
+  let value;
+  if (input[i] === "\"" || input[i] === "'") {
+    const result = parseQuotedString(input, i);
+    if (!result.ok) {
+      return result;
+    }
+    value = result.value;
+    i = result.nextIndex;
+  } else {
+    const start = i;
+    while (i < len && !isWhitespace(input[i]) && input[i] !== "]") {
+      i += 1;
+    }
+    const token = input.slice(start, i);
+    if (!token) {
+      return { ok: false, error: "Empty bracket segment." };
+    }
+    if (/^-?\d+$/.test(token)) {
+      value = Number(token);
+    } else {
+      value = token;
+    }
+  }
+  while (i < len && isWhitespace(input[i])) {
+    i += 1;
+  }
+  if (input[i] !== "]") {
+    return { ok: false, error: "Unclosed bracket in path." };
+  }
+  return { ok: true, value, nextIndex: i + 1 };
+}
+
+function parseOperatorAndValue(input) {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return { ok: false, error: "Missing operator." };
+  }
+  const wordMatch = trimmed.match(/^(contains|startswith|endswith)\b/i);
+  if (wordMatch) {
+    const operator = wordMatch[1].toLowerCase();
+    const rest = trimmed.slice(wordMatch[0].length).trim();
+    const value = parseValueLiteral(rest);
+    if (!value.ok) {
+      return value;
+    }
+    return { ok: true, operator, value: value.value };
+  }
+  const symbolMatch = trimmed.match(/^(==|!=|>=|<=|>|<)/);
+  if (!symbolMatch) {
+    return { ok: false, error: "Expected an operator." };
+  }
+  const operator = symbolMatch[1];
+  const rest = trimmed.slice(symbolMatch[0].length).trim();
+  const value = parseValueLiteral(rest);
+  if (!value.ok) {
+    return value;
+  }
+  return { ok: true, operator, value: value.value };
+}
+
+function parseValueLiteral(input) {
+  if (!input) {
+    return { ok: false, error: "Missing value." };
+  }
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return { ok: false, error: "Missing value." };
+  }
+  if (trimmed[0] === "\"" || trimmed[0] === "'") {
+    const result = parseQuotedString(trimmed, 0);
+    if (!result.ok) {
+      return result;
+    }
+    const rest = trimmed.slice(result.nextIndex).trim();
+    if (rest) {
+      return { ok: false, error: "Unexpected token after quoted value." };
+    }
+    return { ok: true, value: result.value };
+  }
+
+  const token = trimmed.split(/\s+/)[0];
+  const rest = trimmed.slice(token.length).trim();
+  if (rest) {
+    return { ok: false, error: "Unexpected token after value." };
+  }
+  return { ok: true, value: coerceLiteral(token) };
+}
+
+function parseQuotedString(input, index) {
+  const quote = input[index];
+  let i = index + 1;
+  let value = "";
+  while (i < input.length) {
+    const ch = input[i];
+    if (ch === "\\") {
+      const next = input[i + 1];
+      if (next) {
+        value += next;
+        i += 2;
+        continue;
+      }
+    }
+    if (ch === quote) {
+      return { ok: true, value, nextIndex: i + 1 };
+    }
+    value += ch;
+    i += 1;
+  }
+  return { ok: false, error: "Unterminated string." };
+}
+
+function coerceLiteral(value) {
+  const lower = value.toLowerCase();
+  if (lower === "true") {
+    return true;
+  }
+  if (lower === "false") {
+    return false;
+  }
+  if (lower === "null") {
+    return null;
+  }
+  if (/^-?\d+(\.\d+)?$/.test(value)) {
+    return Number(value);
+  }
+  return value;
+}
+
+function evaluateFilterExpression(expression, scope) {
+  const value = getValueAtPath(scope, expression.path);
+  if (expression.type === "exists") {
+    return value !== undefined && value !== null;
+  }
+  if (value === undefined || value === null) {
+    return false;
+  }
+  return compareValues(value, expression.operator, expression.value);
+}
+
+function getValueAtPath(scope, path) {
+  let current = scope;
+  for (const segment of path) {
+    if (current === undefined || current === null) {
+      return undefined;
+    }
+    if (typeof segment === "number") {
+      if (!Array.isArray(current)) {
+        return undefined;
+      }
+      current = current[segment];
+    } else if (Object.prototype.hasOwnProperty.call(current, segment)) {
+      current = current[segment];
+    } else {
+      return undefined;
+    }
+  }
+  return current;
+}
+
+function compareValues(actual, operator, expected) {
+  if (operator === "contains") {
+    if (Array.isArray(actual)) {
+      return actual.some((item) => valuesEqual(item, expected));
+    }
+    return String(actual).includes(String(expected));
+  }
+  if (operator === "startswith") {
+    return String(actual).startsWith(String(expected));
+  }
+  if (operator === "endswith") {
+    return String(actual).endsWith(String(expected));
+  }
+
+  const leftNum = coerceNumber(actual);
+  const rightNum = coerceNumber(expected);
+  if (leftNum !== null && rightNum !== null) {
+    switch (operator) {
+      case "==":
+        return leftNum === rightNum;
+      case "!=":
+        return leftNum !== rightNum;
+      case ">":
+        return leftNum > rightNum;
+      case "<":
+        return leftNum < rightNum;
+      case ">=":
+        return leftNum >= rightNum;
+      case "<=":
+        return leftNum <= rightNum;
+      default:
+        return false;
+    }
+  }
+
+  const leftStr = String(actual);
+  const rightStr = String(expected);
+  switch (operator) {
+    case "==":
+      return leftStr === rightStr;
+    case "!=":
+      return leftStr !== rightStr;
+    case ">":
+      return leftStr > rightStr;
+    case "<":
+      return leftStr < rightStr;
+    case ">=":
+      return leftStr >= rightStr;
+    case "<=":
+      return leftStr <= rightStr;
+    default:
+      return false;
+  }
+}
+
+function valuesEqual(actual, expected) {
+  const leftNum = coerceNumber(actual);
+  const rightNum = coerceNumber(expected);
+  if (leftNum !== null && rightNum !== null) {
+    return leftNum === rightNum;
+  }
+  if (typeof actual === "boolean" && typeof expected === "boolean") {
+    return actual === expected;
+  }
+  return String(actual) === String(expected);
+}
+
+function coerceNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed && /^-?\d+(\.\d+)?$/.test(trimmed)) {
+      return Number(trimmed);
+    }
+  }
+  return null;
+}
+
+function buildFilterScope(entry) {
+  const scope = entry.fields ? { ...entry.fields } : {};
+  assignIfMissing(scope, "level", entry.level);
+  assignIfMissing(scope, "time", entry.time);
+  assignIfMissing(scope, "ingested", entry.ingested);
+  assignIfMissing(scope, "msg", entry.msg);
+  assignIfMissing(scope, "message", entry.msg);
+  assignIfMissing(scope, "raw", entry.raw);
+  assignIfMissing(scope, "parseError", entry.parseError);
+  const channelValue = getChannelValue(entry);
+  if (channelValue !== undefined && channelValue !== null) {
+    assignIfMissing(scope, "channel", channelValue);
+    assignIfMissing(scope, "chanel", channelValue);
+  }
+  return scope;
+}
+
+function assignIfMissing(target, key, value) {
+  if (!Object.prototype.hasOwnProperty.call(target, key)) {
+    target[key] = value;
+  }
+}
+
+function isIdentifierChar(char) {
+  return /[A-Za-z0-9_@-]/.test(char);
+}
+
+function isOperatorStart(char) {
+  return char === "=" || char === "!" || char === ">" || char === "<";
+}
+
+function isWhitespace(char) {
+  return char === " " || char === "\t" || char === "\n" || char === "\r";
 }
 
 function buildRow(entry) {
