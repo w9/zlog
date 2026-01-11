@@ -616,6 +616,15 @@ function parseFilterExpression(input) {
   const selectMatch = expr.match(/^select\s*\((.*)\)$/);
   if (selectMatch) {
     expr = selectMatch[1].trim();
+  } else {
+    const shorthand = parseMessageContainsShorthand(expr);
+    if (shorthand) {
+      return { ok: true, expression: shorthand };
+    }
+  }
+  const regexResult = parseRegexShorthand(expr);
+  if (regexResult) {
+    return regexResult;
   }
   const pathResult = parsePathExpression(expr);
   if (!pathResult.ok) {
@@ -641,6 +650,71 @@ function parseFilterExpression(input) {
       value: opResult.value,
     },
   };
+}
+
+function parseMessageContainsShorthand(expr) {
+  const trimmed = expr.trim();
+  if (!trimmed || trimmed.startsWith(".") || trimmed.startsWith("/")) {
+    return null;
+  }
+  let value = trimmed;
+  if (
+    (value.startsWith("\"") && value.endsWith("\"") && value.length > 1) ||
+    (value.startsWith("'") && value.endsWith("'") && value.length > 1)
+  ) {
+    value = value.slice(1, -1);
+  }
+  return {
+    type: "compare",
+    path: ["message"],
+    operator: "contains",
+    value,
+  };
+}
+
+function parseRegexShorthand(expr) {
+  const trimmed = expr.trim();
+  if (!trimmed.startsWith("/")) {
+    return null;
+  }
+  if (trimmed === "/") {
+    return { ok: false, error: "Regex pattern is empty." };
+  }
+  let pattern = trimmed.slice(1);
+  let flags = "";
+  const lastSlash = findLastUnescapedSlash(trimmed);
+  if (lastSlash > 0) {
+    const tail = trimmed.slice(lastSlash + 1);
+    if (/^[gimsuy]*$/.test(tail)) {
+      pattern = trimmed.slice(1, lastSlash);
+      flags = tail;
+    }
+  }
+  if (!pattern) {
+    return { ok: false, error: "Regex pattern is empty." };
+  }
+  try {
+    const regex = new RegExp(pattern, flags);
+    return {
+      ok: true,
+      expression: {
+        type: "regex",
+        path: ["message"],
+        regex,
+      },
+    };
+  } catch (err) {
+    return { ok: false, error: "Invalid regex." };
+  }
+}
+
+function findLastUnescapedSlash(input) {
+  for (let i = input.length - 1; i >= 0; i -= 1) {
+    if (input[i] === "/" && input[i - 1] !== "\\") {
+      return i;
+    }
+  }
+  return -1;
 }
 
 function parsePathExpression(input) {
@@ -839,6 +913,13 @@ function coerceLiteral(value) {
 }
 
 function evaluateFilterExpression(expression, scope) {
+  if (expression.type === "regex") {
+    const value = getValueAtPath(scope, expression.path);
+    if (value === undefined || value === null) {
+      return false;
+    }
+    return expression.regex.test(String(value));
+  }
   const value = getValueAtPath(scope, expression.path);
   if (expression.type === "exists") {
     return value !== undefined && value !== null;

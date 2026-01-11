@@ -374,11 +374,10 @@ body::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 1px solid var(--filter-border);
-  background: var(--panel);
+  padding: 0 2px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   color: var(--filter-text);
   font-size: 0.55rem;
   line-height: 1;

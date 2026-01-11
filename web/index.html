@@ -86,7 +86,7 @@
                   id="filterInput"
                   class="filter-input"
                   type="text"
-                  placeholder="Filter"
+                  placeholder="Add a filter"
                   autocomplete="off"
                   aria-label="Filter"
                 />
@@ -94,6 +94,8 @@
                   ?
                   <span class="filter-help-tooltip" role="tooltip">
                     <span class="filter-help-title">Examples</span>
+                    <span class="filter-help-row"><code>timeout</code> (message contains)</span>
+                    <span class="filter-help-row"><code>/timeout/i</code> (regex)</span>
                     <span class="filter-help-row"><code>.level == "error"</code></span>
                     <span class="filter-help-row"><code>.channel == "action"</code></span>
                     <span class="filter-help-row"><code>.session</code> (field exists)</span>
