@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>zlog - NDJSON stream viewer</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="logo">zlog</div>
+          <div class="tagline">NDJSON stream viewer</div>
+        </div>
+        <div class="status">
+          <span class="status-dot" id="statusDot"></span>
+          <span class="status-text" id="statusText">connecting</span>
+          <span class="status-meta" id="statusMeta"></span>
+        </div>
+      </header>
+
+      <section class="controls">
+        <div class="control">
+          <label for="searchInput">Search</label>
+          <input id="searchInput" type="text" placeholder="match text or JSON" />
+        </div>
+        <div class="control">
+          <label for="levelSelect">Min level</label>
+          <select id="levelSelect">
+            <option value="all">All</option>
+            <option value="trace">Trace+</option>
+            <option value="debug">Debug+</option>
+            <option value="info">Info+</option>
+            <option value="warn">Warn+</option>
+            <option value="error">Error+</option>
+            <option value="fatal">Fatal</option>
+          </select>
+        </div>
+        <div class="control">
+          <label for="fieldKey">Field</label>
+          <input id="fieldKey" type="text" placeholder="key (e.g. channel)" />
+        </div>
+        <div class="control">
+          <label for="fieldValue">Value</label>
+          <input id="fieldValue" type="text" placeholder="contains" />
+        </div>
+        <div class="control toggles">
+          <label class="toggle">
+            <input id="toggleAuto" type="checkbox" checked />
+            Auto-scroll
+          </label>
+          <label class="toggle">
+            <input id="toggleWrap" type="checkbox" />
+            Wrap lines
+          </label>
+          <label class="toggle">
+            <input id="togglePlain" type="checkbox" checked />
+            Show plain
+          </label>
+        </div>
+        <div class="control actions">
+          <button id="pauseBtn" class="btn">Pause</button>
+          <button id="clearBtn" class="btn ghost">Clear</button>
+        </div>
+      </section>
+
+      <main class="layout">
+        <section class="log-panel">
+          <div class="panel-header">
+            <div class="panel-title">Logs</div>
+            <div class="panel-meta">
+              <span id="countTotal">0</span> total
+              <span class="sep">|</span>
+              <span id="countFiltered">0</span> visible
+              <span class="sep">|</span>
+              <span id="newCount">0 new</span>
+            </div>
+          </div>
+          <div class="log-list" id="logList"></div>
+        </section>
+
+        <aside class="detail-panel">
+          <div class="panel-header">
+            <div class="panel-title">Details</div>
+            <button id="copyBtn" class="btn small">Copy JSON</button>
+          </div>
+          <div class="detail-meta" id="detailMeta">
+            Select a log line to inspect fields.
+          </div>
+          <pre class="detail-body" id="detailBody">{}</pre>
+        </aside>
+      </main>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
