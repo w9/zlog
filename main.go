@@ -184,10 +184,17 @@ func readStdin(store *LogStore, hub *Hub) error {
 
 	for scanner.Scan() {
 		line := strings.TrimRight(scanner.Text(), "\r")
+		var entry LogEntry
 		if strings.TrimSpace(line) == "" {
-			continue
+			entry = LogEntry{
+				Raw:      line,
+				Ingested: formatTime(time.Now()),
+				Level:    "plain",
+				Msg:      "",
+			}
+		} else {
+			entry = parseLine(line)
 		}
-		entry := parseLine(line)
 		entry = store.Add(entry)
 		payload, err := json.Marshal(entry)
 		if err != nil {

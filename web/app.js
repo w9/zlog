@@ -10,6 +10,8 @@ const levelRank = {
   unknown: 0,
 };
 
+const CHANNEL_UNSPECIFIED = "__unspecified__";
+
 const state = {
   logs: [],
   filteredCount: 0,
@@ -18,46 +20,75 @@ const state = {
   autoScroll: true,
   wrap: false,
   showPlain: true,
+  showChannel: false,
+  darkMode: false,
+  showTags: false,
   minLevel: "all",
+  channel: "all",
   search: "",
   fieldKey: "",
   fieldValue: "",
   filterKey: "",
   newSincePause: 0,
   clientMax: 5000,
+  altRows: false,
+  statusText: "",
   statusMeta: "",
+  stickToBottom: true,
+  channelOptions: new Set(),
+  hasUnspecifiedChannel: false,
 };
 
 const dom = {};
+const statusClassNames = ["status-green", "status-orange", "status-red", "status-blue"];
 
 function init() {
   cacheDom();
+  initTheme();
   bindEvents();
   updateStatus("connecting", "waiting for stream");
   loadConfig();
   loadInitialLogs().finally(connectStream);
+  dom.logList.classList.toggle("wrap", state.wrap);
+  dom.logList.classList.toggle("alt", state.altRows);
+  dom.logList.classList.toggle("tags-on", state.showTags);
+  dom.logList.classList.toggle("channel-on", state.showChannel);
 }
 
 function cacheDom() {
+  dom.shell = document.getElementById("shell");
   dom.logList = document.getElementById("logList");
   dom.searchInput = document.getElementById("searchInput");
   dom.levelSelect = document.getElementById("levelSelect");
+  dom.channelSelect = document.getElementById("channelSelect");
   dom.fieldKey = document.getElementById("fieldKey");
   dom.fieldValue = document.getElementById("fieldValue");
   dom.toggleAuto = document.getElementById("toggleAuto");
   dom.toggleWrap = document.getElementById("toggleWrap");
+  dom.toggleAlt = document.getElementById("toggleAlt");
   dom.togglePlain = document.getElementById("togglePlain");
+  dom.toggleChannel = document.getElementById("toggleChannel");
+  dom.toggleDark = document.getElementById("toggleDark");
+  dom.toggleTags = document.getElementById("toggleTags");
   dom.pauseBtn = document.getElementById("pauseBtn");
   dom.clearBtn = document.getElementById("clearBtn");
-  dom.copyBtn = document.getElementById("copyBtn");
+  dom.closeBtn = document.getElementById("closeBtn");
   dom.countTotal = document.getElementById("countTotal");
   dom.countFiltered = document.getElementById("countFiltered");
   dom.newCount = document.getElementById("newCount");
-  dom.statusDot = document.getElementById("statusDot");
   dom.statusText = document.getElementById("statusText");
-  dom.statusMeta = document.getElementById("statusMeta");
-  dom.detailMeta = document.getElementById("detailMeta");
-  dom.detailBody = document.getElementById("detailBody");
+  dom.detailPanel = document.querySelector(".detail-panel");
+  dom.detailEmpty = document.getElementById("detailEmpty");
+  dom.detailLevel = document.getElementById("detailLevel");
+  dom.detailTime = document.getElementById("detailTime");
+  dom.detailIngested = document.getElementById("detailIngested");
+  dom.detailChannel = document.getElementById("detailChannel");
+  dom.detailMessage = document.getElementById("detailMessage");
+  dom.detailParseError = document.getElementById("detailParseError");
+  dom.detailFields = document.getElementById("detailFields");
+  dom.detailRaw = document.getElementById("detailRaw");
+  dom.copyRawBtn = document.getElementById("copyRawBtn");
+  dom.bottomIndicator = document.getElementById("bottomIndicator");
 }
 
 function bindEvents() {
@@ -75,6 +106,11 @@ function bindEvents() {
     renderAll();
   });
 
+  dom.channelSelect.addEventListener("change", () => {
+    state.channel = dom.channelSelect.value;
+    renderAll();
+  });
+
   dom.fieldKey.addEventListener("input", () => {
     state.fieldKey = dom.fieldKey.value.trim();
     renderAll();
@@ -88,6 +124,7 @@ function bindEvents() {
   dom.toggleAuto.addEventListener("change", () => {
     state.autoScroll = dom.toggleAuto.checked;
     if (state.autoScroll) {
+      state.stickToBottom = true;
       scrollToBottom();
     }
   });
@@ -97,8 +134,29 @@ function bindEvents() {
     dom.logList.classList.toggle("wrap", state.wrap);
   });
 
+  dom.toggleAlt.addEventListener("change", () => {
+    state.altRows = dom.toggleAlt.checked;
+    dom.logList.classList.toggle("alt", state.altRows);
+  });
+
   dom.togglePlain.addEventListener("change", () => {
     state.showPlain = dom.togglePlain.checked;
+    renderAll();
+  });
+
+  dom.toggleChannel.addEventListener("change", () => {
+    state.showChannel = dom.toggleChannel.checked;
+    dom.logList.classList.toggle("channel-on", state.showChannel);
+    renderAll();
+  });
+
+  dom.toggleDark.addEventListener("change", () => {
+    setTheme(dom.toggleDark.checked);
+  });
+
+  dom.toggleTags.addEventListener("change", () => {
+    state.showTags = dom.toggleTags.checked;
+    dom.logList.classList.toggle("tags-on", state.showTags);
     renderAll();
   });
 
@@ -109,22 +167,67 @@ function bindEvents() {
   dom.clearBtn.addEventListener("click", () => {
     state.logs = [];
     state.filteredCount = 0;
-    state.selectedId = null;
     state.newSincePause = 0;
-    dom.detailMeta.textContent = "Select a log line to inspect fields.";
-    dom.detailBody.textContent = "{}";
+    clearSelection();
     renderAll();
   });
 
-  dom.copyBtn.addEventListener("click", () => {
-    copyDetails();
+  dom.closeBtn.addEventListener("click", () => {
+    clearSelection();
   });
+
+  dom.copyRawBtn.addEventListener("click", () => {
+    copyRaw();
+  });
+
+  dom.bottomIndicator.addEventListener("click", () => {
+    if (!state.stickToBottom) {
+      scrollToBottom();
+    }
+  });
+
+  dom.logList.addEventListener("scroll", () => {
+    setStickToBottom(isAtBottom());
+  });
+
+  document.addEventListener("keydown", handleKeydown);
+}
+
+function initTheme() {
+  let initial = "";
+  try {
+    initial = localStorage.getItem("zlog-theme") || "";
+  } catch (err) {
+    initial = "";
+  }
+  if (initial !== "dark" && initial !== "light") {
+    const prefersDark =
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
+    initial = prefersDark ? "dark" : "light";
+  }
+  setTheme(initial === "dark", false);
+}
+
+function setTheme(isDark, persist = true) {
+  state.darkMode = Boolean(isDark);
+  document.body.classList.toggle("theme-dark", state.darkMode);
+  if (dom.toggleDark) {
+    dom.toggleDark.checked = state.darkMode;
+  }
+  if (persist) {
+    try {
+      localStorage.setItem("zlog-theme", state.darkMode ? "dark" : "light");
+    } catch (err) {
+      // Ignore storage failures.
+    }
+  }
 }
 
 function setPaused(paused) {
   state.paused = paused;
   dom.pauseBtn.textContent = paused ? "Resume" : "Pause";
-  updateStatus(dom.statusText.textContent);
+  updateStatus();
   if (!paused) {
     state.newSincePause = 0;
     renderAll();
@@ -180,6 +283,7 @@ function connectStream() {
 
 function handleEntry(entry) {
   state.logs.push(entry);
+  maybeAddChannelOption(entry);
   if (state.logs.length > state.clientMax) {
     const extra = state.logs.length - state.clientMax;
     state.logs.splice(0, extra);
@@ -187,8 +291,11 @@ function handleEntry(entry) {
     return;
   }
 
+  const matchesFilters = passesFilters(entry);
   if (state.paused) {
-    state.newSincePause += 1;
+    if (matchesFilters) {
+      state.newSincePause += 1;
+    }
     updateCounts();
     return;
   }
@@ -199,22 +306,27 @@ function handleEntry(entry) {
     return;
   }
 
-  if (passesFilters(entry)) {
+  if (matchesFilters) {
+    const shouldStick = state.autoScroll && state.stickToBottom;
     const row = buildRow(entry);
     dom.logList.appendChild(row);
     state.filteredCount += 1;
-    if (state.autoScroll) {
+    if (shouldStick) {
       scrollToBottom();
+    } else {
+      state.newSincePause += 1;
     }
   }
 
   updateCounts();
+  setStickToBottom(isAtBottom());
 }
 
 function renderAll() {
-  state.filterKey = filterKey();
   state.filteredCount = 0;
   dom.logList.innerHTML = "";
+  rebuildChannelOptions();
+  state.filterKey = filterKey();
 
   const fragment = document.createDocumentFragment();
   for (const entry of state.logs) {
@@ -226,18 +338,22 @@ function renderAll() {
 
   dom.logList.appendChild(fragment);
   updateCounts();
-  if (state.autoScroll && !state.paused) {
+  if (state.autoScroll && state.stickToBottom && !state.paused) {
     scrollToBottom();
   }
+  setStickToBottom(isAtBottom());
 }
 
 function filterKey() {
   return [
     state.minLevel,
+    state.channel,
     state.search,
     state.fieldKey,
     state.fieldValue,
     state.showPlain,
+    state.showChannel,
+    state.showTags,
   ].join("|");
 }
 
@@ -247,6 +363,22 @@ function passesFilters(entry) {
 
   if (!state.showPlain && isPlain) {
     return false;
+  }
+
+  if (state.channel !== "all") {
+    const channelValue = getChannelValue(entry);
+    if (state.channel === CHANNEL_UNSPECIFIED) {
+      if (isChannelSpecified(channelValue)) {
+        return false;
+      }
+    } else {
+      if (!isChannelSpecified(channelValue)) {
+        return false;
+      }
+      if (String(channelValue).trim() !== state.channel) {
+        return false;
+      }
+    }
   }
 
   if (state.minLevel !== "all") {
@@ -291,6 +423,9 @@ function buildRow(entry) {
   row.className = `log-row level-${level}`;
   row.dataset.id = entry.id;
   row.tabIndex = 0;
+  if (state.selectedId === entry.id) {
+    row.classList.add("selected");
+  }
 
   const timeCell = document.createElement("div");
   timeCell.className = "cell";
@@ -307,18 +442,41 @@ function buildRow(entry) {
   levelCell.appendChild(levelText);
 
   const msgCell = document.createElement("div");
-  msgCell.className = "cell";
+  msgCell.className = "cell message-cell";
   const message = document.createElement("div");
   message.className = "message";
-  message.textContent = entry.msg || entry.raw || "";
+  message.textContent = sanitizeMessage(entry.msg || entry.raw || "");
   msgCell.appendChild(message);
 
-  const meta = buildMeta(entry);
-  if (meta.childNodes.length > 0) {
-    msgCell.appendChild(meta);
+  let channelCell = null;
+  if (state.showChannel) {
+    channelCell = document.createElement("div");
+    channelCell.className = "cell";
+    const channelText = document.createElement("div");
+    channelText.className = "channel";
+    channelText.textContent = formatChannelDisplay(getChannelValue(entry));
+    channelCell.appendChild(channelText);
   }
 
-  row.append(timeCell, levelCell, msgCell);
+  if (state.showTags) {
+    const tagsCell = document.createElement("div");
+    tagsCell.className = "cell tags-cell";
+    const tags = buildTags(entry);
+    if (tags.childNodes.length > 0) {
+      tagsCell.appendChild(tags);
+    }
+    if (channelCell) {
+      row.append(timeCell, levelCell, channelCell, msgCell, tagsCell);
+    } else {
+      row.append(timeCell, levelCell, msgCell, tagsCell);
+    }
+  } else {
+    if (channelCell) {
+      row.append(timeCell, levelCell, channelCell, msgCell);
+    } else {
+      row.append(timeCell, levelCell, msgCell);
+    }
+  }
 
   row.addEventListener("click", () => selectEntry(entry.id));
   row.addEventListener("keydown", (event) => {
@@ -333,47 +491,232 @@ function buildRow(entry) {
   return row;
 }
 
-function buildMeta(entry) {
-  const meta = document.createElement("div");
-  meta.className = "meta";
-
-  const fields = entry.fields || {};
-  const picks = [];
-
-  const add = (key, label) => {
-    if (Object.prototype.hasOwnProperty.call(fields, key)) {
-      const value = formatValue(fields[key]);
-      if (value !== "") {
-        picks.push(`${label || key}:${value}`);
-      }
-    }
-  };
-
-  add("channel");
-  add("action");
-  add("basePath", "path");
-  add("term");
-  add("hostname", "host");
-  add("pid");
-
-  for (const text of picks.slice(0, 4)) {
-    const pill = document.createElement("span");
-    pill.className = "pill";
-    pill.textContent = text;
-    meta.appendChild(pill);
+function buildTags(entry) {
+  const container = document.createElement("div");
+  container.className = "tags";
+  if (!entry.fields) {
+    return container;
   }
 
-  return meta;
+  const exclude = new Set([
+    "msg",
+    "message",
+    "event",
+    "error",
+    "err",
+    "level",
+    "severity",
+    "lvl",
+    "level_name",
+    "time",
+    "timestamp",
+    "ts",
+    "@timestamp",
+    "channel",
+    "chanel",
+  ]);
+
+  for (const [key, value] of Object.entries(entry.fields)) {
+    if (exclude.has(key)) {
+      continue;
+    }
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    tag.textContent = formatTag(key, value);
+    container.appendChild(tag);
+  }
+
+  return container;
 }
 
-function formatValue(value) {
-  if (value === null || value === undefined) {
-    return "";
+
+function formatTag(key, value) {
+  if (value === undefined || value === null) {
+    return key;
   }
   if (typeof value === "object") {
-    return "[object]";
+    return `${key}=${JSON.stringify(value)}`;
+  }
+  return `${key}=${String(value)}`;
+}
+
+function formatChannel(value) {
+  if (!isChannelSpecified(value)) {
+    return "unspecified";
   }
   return String(value);
+}
+
+function formatChannelDisplay(value) {
+  if (!isChannelSpecified(value)) {
+    return "";
+  }
+  return String(value);
+}
+
+function renderDetailFields(entry) {
+  dom.detailFields.innerHTML = "";
+  const fields = entry && entry.fields ? entry.fields : null;
+  if (!fields || Object.keys(fields).length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "detail-empty-row";
+    empty.textContent = "No extra fields.";
+    dom.detailFields.appendChild(empty);
+    return;
+  }
+
+  const exclude = getUsedFieldKeys(entry);
+  const keys = Object.keys(fields)
+    .filter((key) => !exclude.has(key.toLowerCase()))
+    .sort((a, b) => a.localeCompare(b));
+  if (keys.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "detail-empty-row";
+    empty.textContent = "No extra fields.";
+    dom.detailFields.appendChild(empty);
+    return;
+  }
+
+  for (const key of keys) {
+    const row = document.createElement("div");
+    row.className = "detail-row";
+    const label = document.createElement("div");
+    label.className = "detail-key";
+    label.textContent = key;
+    const value = document.createElement("div");
+    value.className = "detail-value";
+    value.textContent = formatDetailValue(fields[key]);
+    row.append(label, value);
+    dom.detailFields.appendChild(row);
+  }
+}
+
+function formatDetailValue(value) {
+  if (value === undefined || value === null) {
+    return "-";
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+function getUsedFieldKeys(entry) {
+  const used = new Set();
+  if (!entry || !entry.fields) {
+    return used;
+  }
+  const fields = entry.fields;
+
+  const messageKey = pickMessageKey(fields);
+  if (messageKey) {
+    used.add(messageKey.toLowerCase());
+  }
+
+  const levelKey = findFirstFieldKey(fields, ["level", "severity", "lvl", "level_name"]);
+  if (levelKey) {
+    used.add(levelKey.toLowerCase());
+  }
+
+  const timeKey = pickTimeKey(fields);
+  if (timeKey) {
+    used.add(timeKey.toLowerCase());
+  }
+
+  const channelKey = findFirstFieldKey(fields, ["channel", "chanel"]);
+  if (channelKey) {
+    used.add(channelKey.toLowerCase());
+  }
+
+  const parseErrorKey = findFieldKey(fields, "parseError");
+  if (parseErrorKey) {
+    used.add(parseErrorKey.toLowerCase());
+  }
+
+  return used;
+}
+
+function pickMessageKey(fields) {
+  const keys = ["msg", "message", "event", "error", "err"];
+  for (const key of keys) {
+    const found = findFieldKey(fields, key);
+    if (!found) {
+      continue;
+    }
+    const value = fields[found];
+    if (typeof value === "string") {
+      if (value.trim() !== "") {
+        return found;
+      }
+      continue;
+    }
+    if (value !== undefined && value !== null) {
+      return found;
+    }
+  }
+  return "";
+}
+
+function pickTimeKey(fields) {
+  const keys = ["time", "timestamp", "ts", "@timestamp"];
+  for (const key of keys) {
+    const found = findFieldKey(fields, key);
+    if (!found) {
+      continue;
+    }
+    if (formatTimeValue(fields[found]) !== "") {
+      return found;
+    }
+  }
+  return "";
+}
+
+function formatTimeValue(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return isValidTimeNumber(value) ? "time" : "";
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "";
+    }
+    const numeric = Number(trimmed);
+    if (Number.isFinite(numeric)) {
+      return isValidTimeNumber(numeric) ? trimmed : "";
+    }
+    return trimmed;
+  }
+  return "";
+}
+
+function isValidTimeNumber(num) {
+  return num > 1e9;
+}
+
+function findFirstFieldKey(fields, keys) {
+  for (const key of keys) {
+    const found = findFieldKey(fields, key);
+    if (found) {
+      return found;
+    }
+  }
+  return "";
+}
+
+function findFieldKey(fields, key) {
+  if (!fields) {
+    return "";
+  }
+  if (Object.prototype.hasOwnProperty.call(fields, key)) {
+    return key;
+  }
+  const target = key.toLowerCase();
+  for (const fieldKey of Object.keys(fields)) {
+    if (fieldKey.toLowerCase() === target) {
+      return fieldKey;
+    }
+  }
+  return "";
 }
 
 function getFieldValue(entry, key) {
@@ -390,6 +733,86 @@ function getFieldValue(entry, key) {
     }
   }
   return undefined;
+}
+
+function rebuildChannelOptions() {
+  state.channelOptions = new Set();
+  state.hasUnspecifiedChannel = false;
+  for (const entry of state.logs) {
+    addChannelValue(getChannelValue(entry));
+  }
+  renderChannelOptions();
+}
+
+function maybeAddChannelOption(entry) {
+  addChannelValue(getChannelValue(entry), true);
+}
+
+function addChannelValue(value, incremental) {
+  if (!isChannelSpecified(value)) {
+    if (!state.hasUnspecifiedChannel) {
+      state.hasUnspecifiedChannel = true;
+      if (incremental) {
+        renderChannelOptions();
+      }
+    }
+    return;
+  }
+  const label = String(value).trim();
+  if (!state.channelOptions.has(label)) {
+    state.channelOptions.add(label);
+    if (incremental) {
+      renderChannelOptions();
+    }
+  }
+}
+
+function renderChannelOptions() {
+  const selected = dom.channelSelect.value || state.channel || "all";
+  const options = Array.from(state.channelOptions);
+  options.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+
+  dom.channelSelect.innerHTML = "";
+  const allOption = document.createElement("option");
+  allOption.value = "all";
+  allOption.textContent = "All";
+  dom.channelSelect.appendChild(allOption);
+
+  const unspecifiedOption = document.createElement("option");
+  unspecifiedOption.value = CHANNEL_UNSPECIFIED;
+  unspecifiedOption.textContent = "Unspecified";
+  dom.channelSelect.appendChild(unspecifiedOption);
+
+  for (const option of options) {
+    const opt = document.createElement("option");
+    opt.value = option;
+    opt.textContent = option;
+    dom.channelSelect.appendChild(opt);
+  }
+
+  let nextValue = "all";
+  if (selected === CHANNEL_UNSPECIFIED || selected === "all") {
+    nextValue = selected;
+  } else if (state.channelOptions.has(selected)) {
+    nextValue = selected;
+  }
+  dom.channelSelect.value = nextValue;
+  state.channel = nextValue;
+}
+
+function getChannelValue(entry) {
+  let value = getFieldValue(entry, "channel");
+  if (value === undefined) {
+    value = getFieldValue(entry, "chanel");
+  }
+  return value;
+}
+
+function isChannelSpecified(value) {
+  if (value === undefined || value === null) {
+    return false;
+  }
+  return String(value).trim() !== "";
 }
 
 function selectEntry(id) {
@@ -409,34 +832,62 @@ function selectEntry(id) {
     row.classList.add("selected");
   }
 
-  const detail = {
-    id: entry.id,
-    level: entry.level || "unknown",
-    time: entry.time || null,
-    ingested: entry.ingested || null,
-    msg: entry.msg || "",
-    raw: entry.raw || "",
-    fields: entry.fields || null,
-    parseError: entry.parseError || null,
-  };
+  dom.shell.classList.add("detail-open");
+  dom.detailPanel.classList.remove("empty");
 
-  dom.detailMeta.textContent = `${(entry.level || "unknown").toUpperCase()} - ${entry.time || entry.ingested || ""}`;
-  dom.detailBody.textContent = JSON.stringify(detail, null, 2);
+  dom.detailLevel.textContent = (entry.level || "unknown").toUpperCase();
+  dom.detailTime.textContent = entry.time || "-";
+  dom.detailIngested.textContent = entry.ingested || "-";
+  dom.detailChannel.textContent = formatChannel(getChannelValue(entry));
+  dom.detailMessage.textContent = entry.msg || entry.raw || "-";
+  dom.detailParseError.textContent = entry.parseError || "-";
+  dom.detailRaw.textContent = entry.raw || "";
+  renderDetailFields(entry);
 }
 
-function copyDetails() {
-  const text = dom.detailBody.textContent || "";
-  if (!text || text === "{}") {
+function clearSelection() {
+  state.selectedId = null;
+  dom.shell.classList.remove("detail-open");
+  if (dom.detailPanel) {
+    dom.detailPanel.classList.add("empty");
+  }
+  const previous = dom.logList.querySelector(".log-row.selected");
+  if (previous) {
+    previous.classList.remove("selected");
+  }
+  dom.detailLevel.textContent = "-";
+  dom.detailTime.textContent = "-";
+  dom.detailIngested.textContent = "-";
+  dom.detailChannel.textContent = "-";
+  dom.detailMessage.textContent = "-";
+  dom.detailParseError.textContent = "-";
+  dom.detailRaw.textContent = "";
+  dom.detailFields.innerHTML = "";
+  if (dom.detailEmpty) {
+    dom.detailEmpty.textContent = "Select a log line to inspect fields.";
+  }
+}
+
+function sanitizeMessage(value) {
+  return String(value).replace(/[\r\n]+/g, " ");
+}
+
+function copyRaw() {
+  const text = dom.detailRaw.textContent || "";
+  if (!text) {
     return;
   }
+  copyText(text, dom.copyRawBtn, "COPY");
+}
 
+function copyText(text, button, label) {
   const reset = () => {
-    dom.copyBtn.textContent = "Copy JSON";
+    button.textContent = label;
   };
 
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(() => {
-      dom.copyBtn.textContent = "Copied";
+      button.textContent = "Copied";
       setTimeout(reset, 1200);
     });
     return;
@@ -448,7 +899,7 @@ function copyDetails() {
   textarea.select();
   document.execCommand("copy");
   textarea.remove();
-  dom.copyBtn.textContent = "Copied";
+  button.textContent = "Copied";
   setTimeout(reset, 1200);
 }
 
@@ -470,31 +921,162 @@ function normalizeLevel(level) {
 function updateCounts() {
   dom.countTotal.textContent = state.logs.length;
   dom.countFiltered.textContent = state.filteredCount;
-  dom.newCount.textContent = state.paused ? state.newSincePause : 0;
+  dom.newCount.textContent = state.newSincePause;
 }
 
 function scrollToBottom() {
   dom.logList.scrollTop = dom.logList.scrollHeight;
+  setStickToBottom(true);
+}
+
+function isAtBottom() {
+  const threshold = 6;
+  const { scrollTop, scrollHeight, clientHeight } = dom.logList;
+  return scrollHeight - scrollTop - clientHeight <= threshold;
+}
+
+function setStickToBottom(atBottom) {
+  state.stickToBottom = atBottom;
+  if (atBottom && !state.paused && state.newSincePause) {
+    state.newSincePause = 0;
+    updateCounts();
+  }
+  updateBottomUI(atBottom);
+}
+
+function updateBottomUI(forceAtBottom) {
+  const atBottom = typeof forceAtBottom === "boolean" ? forceAtBottom : isAtBottom();
+  if (dom.bottomIndicator) {
+    dom.bottomIndicator.textContent = atBottom ? "at bottom" : "scrolled";
+    dom.bottomIndicator.classList.toggle("is-link", !atBottom);
+    dom.bottomIndicator.disabled = atBottom;
+    setStatusClass(dom.bottomIndicator, atBottom ? "status-green" : "status-orange");
+  }
+}
+
+function handleKeydown(event) {
+  if (event.defaultPrevented || isTypingTarget(event.target)) {
+    return;
+  }
+
+  switch (event.key) {
+    case "j":
+    case "ArrowDown":
+      event.preventDefault();
+      selectRelative(1);
+      break;
+    case "k":
+    case "ArrowUp":
+      event.preventDefault();
+      selectRelative(-1);
+      break;
+    case " ":
+    case "Spacebar":
+    case "u":
+    case "PageUp":
+      if (event.key === " " || event.key === "Spacebar") {
+        event.preventDefault();
+        scrollToBottom();
+        break;
+      }
+      event.preventDefault();
+      scrollByPage(-1);
+      break;
+    case "d":
+    case "PageDown":
+      event.preventDefault();
+      scrollByPage(1);
+      break;
+    default:
+      break;
+  }
+}
+
+function isTypingTarget(target) {
+  if (!target) {
+    return false;
+  }
+  const tag = target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+    return true;
+  }
+  return target.isContentEditable;
+}
+
+function selectRelative(delta) {
+  const rows = Array.from(dom.logList.querySelectorAll(".log-row"));
+  if (!rows.length) {
+    return;
+  }
+
+  let index = rows.findIndex((row) => Number(row.dataset.id) === state.selectedId);
+  if (index === -1) {
+    index = delta > 0 ? 0 : rows.length - 1;
+  } else {
+    index = Math.min(rows.length - 1, Math.max(0, index + delta));
+  }
+
+  const row = rows[index];
+  const id = Number(row.dataset.id);
+  if (!Number.isFinite(id)) {
+    return;
+  }
+
+  selectEntry(id);
+  row.scrollIntoView({ block: "nearest" });
+  setStickToBottom(isAtBottom());
+}
+
+function scrollByPage(direction) {
+  const offset = dom.logList.clientHeight * 0.9 * direction;
+  dom.logList.scrollTop += offset;
+  setStickToBottom(isAtBottom());
 }
 
 function updateStatus(text, meta) {
-  dom.statusText.textContent = text;
+  if (typeof text === "string") {
+    state.statusText = text;
+  }
   if (typeof meta === "string") {
     state.statusMeta = meta;
   }
-  dom.statusMeta.textContent = state.paused ? "paused" : state.statusMeta;
 
-  let color = "#facc15";
-  if (text === "connected") {
-    color = "#22c55e";
-  } else if (text === "reconnecting") {
-    color = "#f59e0b";
-  } else if (text === "error") {
-    color = "#ef4444";
+  const parts = [];
+  if (state.statusText) {
+    parts.push(state.statusText);
+  }
+  if (state.paused) {
+    parts.push("paused");
+  } else if (state.statusMeta) {
+    parts.push(state.statusMeta);
   }
 
-  dom.statusDot.style.background = color;
-  dom.statusDot.style.boxShadow = `0 0 10px ${color}66`;
+  dom.statusText.textContent = parts.join(" ").trim();
+  setStatusClass(dom.statusText, statusTextClass(state.statusText));
+}
+
+function statusTextClass(text) {
+  switch (text) {
+    case "connected":
+      return "status-green";
+    case "reconnecting":
+      return "status-orange";
+    case "error":
+      return "status-red";
+    case "connecting":
+    default:
+      return "status-blue";
+  }
+}
+
+function setStatusClass(element, className) {
+  if (!element) {
+    return;
+  }
+  statusClassNames.forEach((name) => element.classList.remove(name));
+  if (className) {
+    element.classList.add(className);
+  }
 }
 
 document.addEventListener("DOMContentLoaded", init);

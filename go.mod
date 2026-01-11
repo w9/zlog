@@ -1,3 +1,3 @@
-module ndjson-log-viewer
+module zlog
 
 go 1.20

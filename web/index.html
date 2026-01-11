@@ -7,90 +7,161 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="shell">
-      <header class="topbar">
-        <div class="brand">
-          <div class="logo">zlog</div>
-          <div class="tagline">NDJSON stream viewer</div>
+    <div class="shell" id="shell">
+      <div class="panel-header shell-title">
+        <div class="panel-title">
+          ZLOG <span class="toolbar-tagline">(NDJSON stream viewer)</span>
         </div>
-        <div class="status">
-          <span class="status-dot" id="statusDot"></span>
-          <span class="status-text" id="statusText">connecting</span>
-          <span class="status-meta" id="statusMeta"></span>
+      </div>
+      <header class="topbar">
+        <div class="toolbar">
+          <div class="control">
+            <label for="searchInput">Search</label>
+            <input id="searchInput" type="text" placeholder="match text or JSON" />
+          </div>
+          <div class="control">
+            <label for="levelSelect">Min level</label>
+            <select id="levelSelect">
+              <option value="all">All</option>
+              <option value="trace">Trace+</option>
+              <option value="debug">Debug+</option>
+              <option value="info">Info+</option>
+              <option value="warn">Warn+</option>
+              <option value="error">Error+</option>
+              <option value="fatal">Fatal</option>
+            </select>
+          </div>
+          <div class="control">
+            <label for="channelSelect">Channel</label>
+            <select id="channelSelect">
+              <option value="all">All</option>
+            </select>
+          </div>
+          <div class="control">
+            <label for="fieldKey">Field</label>
+            <input id="fieldKey" type="text" placeholder="key (e.g. channel)" />
+          </div>
+          <div class="control">
+            <label for="fieldValue">Value</label>
+            <input id="fieldValue" type="text" placeholder="contains" />
+          </div>
+        </div>
+        <div class="toggle-row">
+          <div class="toggles">
+            <label class="toggle">
+              <input id="toggleAuto" type="checkbox" checked />
+              Auto-scroll
+            </label>
+            <label class="toggle">
+              <input id="toggleWrap" type="checkbox" />
+              Wrap lines
+            </label>
+            <label class="toggle">
+              <input id="toggleAlt" type="checkbox" />
+              Alternate rows
+            </label>
+            <label class="toggle">
+              <input id="togglePlain" type="checkbox" checked />
+              Show plain
+            </label>
+            <label class="toggle">
+              <input id="toggleChannel" type="checkbox" />
+              Show channel column
+            </label>
+            <label class="toggle">
+              <input id="toggleDark" type="checkbox" />
+              Dark mode
+            </label>
+            <label class="toggle">
+              <input id="toggleTags" type="checkbox" />
+              Show custom fields as tags
+            </label>
+          </div>
+          <div class="actions">
+            <button id="pauseBtn" class="btn">Pause</button>
+            <button id="clearBtn" class="btn ghost">Clear</button>
+          </div>
         </div>
       </header>
-
-      <section class="controls">
-        <div class="control">
-          <label for="searchInput">Search</label>
-          <input id="searchInput" type="text" placeholder="match text or JSON" />
-        </div>
-        <div class="control">
-          <label for="levelSelect">Min level</label>
-          <select id="levelSelect">
-            <option value="all">All</option>
-            <option value="trace">Trace+</option>
-            <option value="debug">Debug+</option>
-            <option value="info">Info+</option>
-            <option value="warn">Warn+</option>
-            <option value="error">Error+</option>
-            <option value="fatal">Fatal</option>
-          </select>
-        </div>
-        <div class="control">
-          <label for="fieldKey">Field</label>
-          <input id="fieldKey" type="text" placeholder="key (e.g. channel)" />
-        </div>
-        <div class="control">
-          <label for="fieldValue">Value</label>
-          <input id="fieldValue" type="text" placeholder="contains" />
-        </div>
-        <div class="control toggles">
-          <label class="toggle">
-            <input id="toggleAuto" type="checkbox" checked />
-            Auto-scroll
-          </label>
-          <label class="toggle">
-            <input id="toggleWrap" type="checkbox" />
-            Wrap lines
-          </label>
-          <label class="toggle">
-            <input id="togglePlain" type="checkbox" checked />
-            Show plain
-          </label>
-        </div>
-        <div class="control actions">
-          <button id="pauseBtn" class="btn">Pause</button>
-          <button id="clearBtn" class="btn ghost">Clear</button>
-        </div>
-      </section>
 
       <main class="layout">
         <section class="log-panel">
           <div class="panel-header">
             <div class="panel-title">Logs</div>
-            <div class="panel-meta">
-              <span id="countTotal">0</span> total
-              <span class="sep">|</span>
-              <span id="countFiltered">0</span> visible
-              <span class="sep">|</span>
-              <span id="newCount">0 new</span>
-            </div>
           </div>
           <div class="log-list" id="logList"></div>
         </section>
 
-        <aside class="detail-panel">
+        <aside class="detail-panel empty">
           <div class="panel-header">
             <div class="panel-title">Details</div>
-            <button id="copyBtn" class="btn small">Copy JSON</button>
+            <button id="closeBtn" class="link-button">Close</button>
           </div>
-          <div class="detail-meta" id="detailMeta">
-            Select a log line to inspect fields.
+          <div class="detail-grid" id="detailGrid">
+            <div class="detail-empty" id="detailEmpty">
+              Select a log line to inspect fields.
+            </div>
+            <div class="detail-card detail-raw" id="detailRawCard">
+              <div class="detail-card-title-row">
+                <div class="detail-card-title">Raw</div>
+                <button id="copyRawBtn" class="btn ghost small">COPY</button>
+              </div>
+              <pre class="detail-raw-body" id="detailRaw"></pre>
+            </div>
+            <div class="detail-card" id="detailSummaryCard">
+              <div class="detail-card-title">Summary</div>
+              <div class="detail-table">
+                <div class="detail-row">
+                  <div class="detail-key">Level</div>
+                  <div class="detail-value" id="detailLevel">-</div>
+                </div>
+                <div class="detail-row">
+                  <div class="detail-key">Time</div>
+                  <div class="detail-value" id="detailTime">-</div>
+                </div>
+                <div class="detail-row">
+                  <div class="detail-key">Ingested</div>
+                  <div class="detail-value" id="detailIngested">-</div>
+                </div>
+                <div class="detail-row">
+                  <div class="detail-key">Channel</div>
+                  <div class="detail-value" id="detailChannel">-</div>
+                </div>
+                <div class="detail-row">
+                  <div class="detail-key">Message</div>
+                  <div class="detail-value" id="detailMessage">-</div>
+                </div>
+                <div class="detail-row">
+                  <div class="detail-key">Parse Error</div>
+                  <div class="detail-value" id="detailParseError">-</div>
+                </div>
+              </div>
+            </div>
+            <div class="detail-card" id="detailFieldsCard">
+              <div class="detail-card-title">Extra fields</div>
+              <div class="detail-table" id="detailFields"></div>
+            </div>
           </div>
-          <pre class="detail-body" id="detailBody">{}</pre>
         </aside>
       </main>
+
+      <footer class="status-bar">
+        <div class="shortcuts">j/k or Up/Down: move | u/d: page | space: bottom</div>
+        <div class="status-right">
+          <div class="panel-meta">
+            <span id="countTotal">0</span> total
+            <span class="sep">|</span>
+            <span id="countFiltered">0</span> visible
+            <span class="sep">|</span>
+            <span id="newCount">0</span> new
+          </div>
+          <div class="status-line">
+            <button id="bottomIndicator" class="status-item status-button" type="button">at bottom</button>
+            <span class="sep">|</span>
+            <span class="status-item" id="statusText">connecting</span>
+          </div>
+        </div>
+      </footer>
     </div>
 
     <script src="/app.js"></script>
