@@ -8,7 +8,7 @@
   </head>
   <body>
     <div class="shell" id="shell">
-      <div class="panel-header shell-title">
+      <div class="shell-title">
         <div class="panel-title">
           ZLOG <span class="toolbar-tagline">(NDJSON stream viewer)</span>
         </div>
@@ -146,7 +146,26 @@
       </main>
 
       <footer class="status-bar">
-        <div class="shortcuts">j/k or Up/Down: move | u/d: page | space: bottom</div>
+        <div class="shortcuts">
+          <span class="shortcut-group">
+            <span class="shortcut-label">Move</span>
+            <kbd class="kbd">J</kbd>
+            <kbd class="kbd">K</kbd>
+            <kbd class="kbd">Up</kbd>
+            <kbd class="kbd">Down</kbd>
+          </span>
+          <span class="shortcut-sep">|</span>
+          <span class="shortcut-group">
+            <span class="shortcut-label">Page</span>
+            <kbd class="kbd">U</kbd>
+            <kbd class="kbd">D</kbd>
+          </span>
+          <span class="shortcut-sep">|</span>
+          <span class="shortcut-group">
+            <span class="shortcut-label">Bottom</span>
+            <kbd class="kbd">Space</kbd>
+          </span>
+        </div>
         <div class="status-right">
           <div class="panel-meta">
             <span id="countTotal">0</span> total

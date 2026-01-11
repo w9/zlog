@@ -28,6 +28,10 @@
   --raw-border: rgba(31, 27, 22, 0.08);
   --tag-text: rgba(31, 27, 22, 0.55);
   --tag-bg: rgba(31, 27, 22, 0.05);
+  --kbd-bg: #f2ede5;
+  --kbd-border: rgba(31, 27, 22, 0.18);
+  --kbd-text: rgba(31, 27, 22, 0.65);
+  --kbd-shadow: rgba(31, 27, 22, 0.2);
   --level-trace: #6b7280;
   --level-debug: #2563eb;
   --level-info: #0f766e;
@@ -72,6 +76,10 @@ body.theme-dark {
   --raw-border: rgba(233, 226, 216, 0.12);
   --tag-text: rgba(233, 226, 216, 0.6);
   --tag-bg: rgba(233, 226, 216, 0.08);
+  --kbd-bg: #1c2226;
+  --kbd-border: rgba(233, 226, 216, 0.18);
+  --kbd-text: rgba(233, 226, 216, 0.7);
+  --kbd-shadow: rgba(0, 0, 0, 0.6);
   --level-trace: #9ca3af;
   --level-debug: #60a5fa;
   --level-info: #2dd4bf;
@@ -150,6 +158,12 @@ body::after {
   border-radius: 12px;
   box-shadow: var(--shadow);
   animation: fadeIn 0.6s ease;
+}
+
+.shell-title {
+  display: flex;
+  align-items: baseline;
+  padding: 0 4px;
 }
 
 .toolbar-tagline {
@@ -297,7 +311,7 @@ body::after {
 
 .status-right {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 10px;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -307,13 +321,13 @@ body::after {
   font-size: 0.72rem;
   color: var(--muted);
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 6px;
 }
 
 .status-line {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   gap: 6px;
   font-size: 0.6rem;
   text-transform: uppercase;
@@ -323,8 +337,9 @@ body::after {
 }
 
 .status-item {
-  display: inline-flex;
-  align-items: center;
+  display: inline-block;
+  position: relative;
+  padding-left: 12px;
   --dot-color: currentColor;
 }
 
@@ -332,6 +347,7 @@ body::after {
   border: none;
   background: transparent;
   padding: 0;
+  padding-left: 12px;
   margin: 0;
   color: inherit;
   font: inherit;
@@ -350,7 +366,10 @@ body::after {
   height: 6px;
   border-radius: 999px;
   background: var(--dot-color);
-  margin-right: 6px;
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .status-item.active {
@@ -372,8 +391,27 @@ body::after {
   --dot-color: var(--status-orange);
 }
 
+.status-item.status-orange::before {
+  border-radius: 0;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
 .status-item.status-red {
   --dot-color: var(--status-red);
+}
+
+.status-item.status-red::before {
+  border-radius: 0;
+  clip-path: polygon(
+    30% 0%,
+    70% 0%,
+    100% 30%,
+    100% 70%,
+    70% 100%,
+    30% 100%,
+    0% 70%,
+    0% 30%
+  );
 }
 
 .status-item.status-blue {
@@ -383,7 +421,7 @@ body::after {
 .status-bar {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: baseline;
   gap: 10px;
   padding: 6px 10px;
   border-radius: 10px;
@@ -393,11 +431,47 @@ body::after {
 }
 
 .shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
   font-size: 0.62rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
   white-space: nowrap;
+}
+
+.shortcut-group {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.shortcut-label {
+  font-size: 0.6rem;
+}
+
+.shortcut-sep {
+  opacity: 0.5;
+}
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid var(--kbd-border);
+  background: var(--kbd-bg);
+  color: var(--kbd-text);
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: inset 0 -1px 0 var(--kbd-shadow);
 }
 
 .sep {
@@ -661,8 +735,8 @@ body::after {
 }
 
 .detail-key {
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  text-transform: none;
+  letter-spacing: 0.02em;
   color: var(--muted);
   font-size: 0.62rem;
 }

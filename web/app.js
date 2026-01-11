@@ -295,6 +295,8 @@ function handleEntry(entry) {
   if (state.paused) {
     if (matchesFilters) {
       state.newSincePause += 1;
+
+      console.log("New log while paused:", entry);
     }
     updateCounts();
     return;
