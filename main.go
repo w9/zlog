@@ -19,7 +19,7 @@ import (
 
 const (
 	defaultPort      = 8037
-	defaultMaxEntries = 5000
+	defaultMaxEntries = 10000
 	maxScanTokenSize = 10 * 1024 * 1024
 )
 

@@ -29,7 +29,7 @@ Simulated stream:
 
 - `--host` (default: `127.0.0.1`)
 - `--port` (default: `8037`)
-- `--max` (default: `5000`) max entries kept in memory
+- `--max` (default: `10000`) max entries kept in memory
 
 ## Filter syntax
 
@@ -45,13 +45,12 @@ Filters are combined with AND and are saved in localStorage.
   - `.session` (field exists)
   - `.duration >= 120`
   - `.message contains "timeout"`
-  - `select(.user.id == "42")`
   - `.tags[0] == "api"`
 
 ## UI highlights
 
 - Color-coded severity and optional channel column
-- Search, level filter, channel filter, and filter tags
+- Level filter, channel filter, and filter tags
 - Toggle plain logs, wrap lines, alternating rows, and extra fields as tags
 - Details panel with summary, extra fields, and raw entry view
 - Dark mode with persisted preference

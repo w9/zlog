@@ -193,34 +193,41 @@ body::after {
 }
 
 
-.toolbar {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 6px;
+.toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
   padding-top: 6px;
 }
 
-.toggle-row {
+.toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
-  padding-top: 4px;
 }
 
 .control {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 8px;
 }
 
 .control label {
-  font-size: 0.58rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--muted);
+  white-space: nowrap;
 }
 
-.control input,
+.control label.field-label {
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+.control input:not(.range-input),
 .control select {
   padding: 4px 6px;
   border-radius: 6px;
@@ -228,6 +235,148 @@ body::after {
   background: var(--input-bg);
   color: var(--ink);
   font-size: 0.72rem;
+}
+
+.range-slider {
+  position: relative;
+  width: 168px;
+  min-width: 140px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  margin: 0 24px;
+}
+
+.range-track {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 50%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--input-border);
+  transform: translateY(-50%);
+}
+
+.range-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.range-input {
+  -webkit-appearance: none;
+  appearance: none;
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  height: 32px;
+  background: transparent;
+  margin: 0;
+  pointer-events: none;
+}
+
+.range-input::-webkit-slider-runnable-track {
+  height: 6px;
+  background: transparent;
+}
+
+.range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.range-input::-moz-range-track {
+  height: 6px;
+  background: transparent;
+}
+
+.range-input::-moz-range-thumb {
+  pointer-events: auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.range-input.range-min {
+  z-index: 2;
+}
+
+.range-input.range-max {
+  z-index: 3;
+}
+
+.range-label {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--input-border);
+  font-size: 0.6rem;
+  color: var(--ink);
+  white-space: nowrap;
+  pointer-events: auto;
+  cursor: grab;
+  user-select: none;
+  box-shadow: 0 2px 6px rgba(31, 27, 22, 0.16);
+}
+
+.button-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  overflow: hidden;
+}
+
+.button-group button {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 4px 10px;
+  font-size: 0.68rem;
+  font-weight: 400;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.button-group button + button {
+  border-left: 1px solid var(--input-border);
+}
+
+.button-group button[data-state="on"] {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.button-group button:not([data-state="on"]):hover {
+  background: var(--filter-bg);
+  color: var(--ink);
+}
+
+.button-group button:focus-visible {
+  outline: 2px solid var(--outline-selected);
+  outline-offset: -1px;
 }
 
 .toggles {
@@ -659,7 +808,7 @@ body::after {
   display: grid;
   grid-template-columns: 140px 30px minmax(0, 1fr);
   gap: 6px;
-  padding: 2px 6px;
+  padding: 1px 6px;
   border-radius: 4px;
   background: transparent;
   cursor: pointer;
@@ -918,11 +1067,9 @@ body::after {
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(6px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -941,11 +1088,6 @@ body::after {
   .topbar {
     align-items: stretch;
     gap: 12px;
-  }
-
-  .toggle-row {
-    flex-direction: column;
-    align-items: flex-start;
   }
 
   .actions {
@@ -983,7 +1125,7 @@ body::after {
     grid-template-columns: 140px 30px 45px minmax(0, 1fr) minmax(0, 120px);
   }
 
-  .toggle-row {
+  .toolbar-row {
     gap: 8px;
   }
 

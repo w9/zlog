@@ -10,6 +10,17 @@ const levelRank = {
   unknown: 0,
 };
 
+const levelOrder = ["trace", "debug", "info", "warn", "error", "fatal"];
+const levelLabels = {
+  trace: "Trace",
+  debug: "Debug",
+  info: "Info",
+  warn: "Warn",
+  error: "Error",
+  fatal: "Fatal",
+};
+
+const CHANNEL_ALL = "__all__";
 const CHANNEL_UNSPECIFIED = "__unspecified__";
 
 const state = {
@@ -24,21 +35,21 @@ const state = {
   darkMode: false,
   showTags: false,
   minLevel: "all",
-  channel: "all",
-  search: "",
+  maxLevel: "all",
   filters: [],
   nextFilterId: 1,
   draftFilter: null,
   draftFilterRaw: "",
   filterKey: "",
   newSincePause: 0,
-  clientMax: 5000,
+  clientMax: 10000,
   altRows: false,
   statusText: "",
   statusMeta: "",
   stickToBottom: true,
   channelOptions: new Set(),
   hasUnspecifiedChannel: false,
+  selectedChannels: new Set(),
 };
 
 const dom = {};
@@ -51,6 +62,7 @@ const filterStorageKey = "zlog-filters";
 
 function init() {
   cacheDom();
+  initLevelRange();
   initTheme();
   loadStoredFilters();
   bindEvents();
@@ -67,9 +79,13 @@ function init() {
 function cacheDom() {
   dom.shell = document.getElementById("shell");
   dom.logList = document.getElementById("logList");
-  dom.searchInput = document.getElementById("searchInput");
-  dom.levelSelect = document.getElementById("levelSelect");
-  dom.channelSelect = document.getElementById("channelSelect");
+  dom.levelRange = document.getElementById("levelRange");
+  dom.levelMinRange = document.getElementById("levelMinRange");
+  dom.levelMaxRange = document.getElementById("levelMaxRange");
+  dom.levelRangeFill = document.getElementById("levelRangeFill");
+  dom.levelMinLabel = document.getElementById("levelMinLabel");
+  dom.levelMaxLabel = document.getElementById("levelMaxLabel");
+  dom.channelButtons = document.getElementById("channelButtons");
   dom.filterInput = document.getElementById("filterInput");
   dom.toggleAuto = document.getElementById("toggleAuto");
   dom.toggleWrap = document.getElementById("toggleWrap");
@@ -102,22 +118,50 @@ function cacheDom() {
 }
 
 function bindEvents() {
-  let searchTimer = null;
-  dom.searchInput.addEventListener("input", () => {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => {
-      state.search = dom.searchInput.value.trim().toLowerCase();
-      renderAll();
-    }, 150);
+  dom.levelMinRange.addEventListener("input", () => {
+    handleLevelRangeInput("min", false);
   });
 
-  dom.levelSelect.addEventListener("change", () => {
-    state.minLevel = dom.levelSelect.value;
-    renderAll();
+  dom.levelMaxRange.addEventListener("input", () => {
+    handleLevelRangeInput("max", false);
   });
 
-  dom.channelSelect.addEventListener("change", () => {
-    state.channel = dom.channelSelect.value;
+  dom.levelMinRange.addEventListener("change", () => {
+    handleLevelRangeInput("min", true);
+  });
+
+  dom.levelMaxRange.addEventListener("change", () => {
+    handleLevelRangeInput("max", true);
+  });
+
+  dom.levelMinRange.addEventListener("pointerdown", () => {
+    setActiveLevelRange("min");
+  });
+
+  dom.levelMaxRange.addEventListener("pointerdown", () => {
+    setActiveLevelRange("max");
+  });
+
+  bindRangeLabelDrag(dom.levelMinLabel, "min");
+  bindRangeLabelDrag(dom.levelMaxLabel, "max");
+
+  dom.channelButtons.addEventListener("click", (event) => {
+    const button = event.target.closest("button");
+    if (!button || !dom.channelButtons.contains(button)) {
+      return;
+    }
+    const value = button.dataset.channel || "";
+    if (!value) {
+      return;
+    }
+    if (value === CHANNEL_ALL) {
+      state.selectedChannels.clear();
+    } else if (state.selectedChannels.has(value)) {
+      state.selectedChannels.delete(value);
+    } else {
+      state.selectedChannels.add(value);
+    }
+    renderChannelOptions();
     renderAll();
   });
 
@@ -345,11 +389,9 @@ function connectStream() {
 function handleEntry(entry) {
   state.logs.push(entry);
   maybeAddChannelOption(entry);
-  if (state.logs.length > state.clientMax) {
-    const extra = state.logs.length - state.clientMax;
-    state.logs.splice(0, extra);
-    renderAll();
-    return;
+  const extra = state.logs.length - state.clientMax;
+  if (extra > 0) {
+    trimOverflow(extra);
   }
 
   const matchesFilters = passesFilters(entry);
@@ -385,6 +427,36 @@ function handleEntry(entry) {
   setStickToBottom(isAtBottom());
 }
 
+function trimOverflow(extra) {
+  if (extra <= 0) {
+    return;
+  }
+  const wasAtBottom = isAtBottom();
+  const beforeHeight = dom.logList.scrollHeight;
+  const removed = state.logs.splice(0, extra);
+  let removedVisible = 0;
+
+  for (const entry of removed) {
+    const row = dom.logList.querySelector(`[data-id="${entry.id}"]`);
+    if (row) {
+      row.remove();
+      removedVisible += 1;
+    }
+  }
+
+  if (removedVisible) {
+    state.filteredCount = Math.max(0, state.filteredCount - removedVisible);
+  }
+
+  if (!wasAtBottom) {
+    const afterHeight = dom.logList.scrollHeight;
+    const delta = beforeHeight - afterHeight;
+    if (delta > 0) {
+      dom.logList.scrollTop = Math.max(0, dom.logList.scrollTop - delta);
+    }
+  }
+}
+
 function renderAll() {
   state.filteredCount = 0;
   dom.logList.innerHTML = "";
@@ -410,14 +482,177 @@ function renderAll() {
 function filterKey() {
   return [
     state.minLevel,
-    state.channel,
-    state.search,
+    state.maxLevel,
+    channelKey(),
     state.showPlain,
     state.showChannel,
     state.showTags,
     state.filters.map((filter) => filter.raw).join(","),
     state.draftFilterRaw,
   ].join("|");
+}
+
+function channelKey() {
+  if (!state.selectedChannels.size) {
+    return "all";
+  }
+  return Array.from(state.selectedChannels).sort().join(",");
+}
+
+function initLevelRange() {
+  if (!dom.levelMinRange || !dom.levelMaxRange) {
+    return;
+  }
+  const maxIndex = levelOrder.length - 1;
+  dom.levelMinRange.value = "0";
+  dom.levelMaxRange.value = String(maxIndex);
+  setActiveLevelRange("max");
+  updateLevelRangeUI(0, maxIndex);
+  updateLevelRangeState(0, maxIndex);
+}
+
+function handleLevelRangeInput(active, commit) {
+  if (!dom.levelMinRange || !dom.levelMaxRange) {
+    return;
+  }
+  let minIndex = Number(dom.levelMinRange.value);
+  let maxIndex = Number(dom.levelMaxRange.value);
+  if (!Number.isFinite(minIndex) || !Number.isFinite(maxIndex)) {
+    return;
+  }
+  if (minIndex > maxIndex) {
+    if (active === "min") {
+      maxIndex = minIndex;
+      dom.levelMaxRange.value = String(maxIndex);
+    } else {
+      minIndex = maxIndex;
+      dom.levelMinRange.value = String(minIndex);
+    }
+  }
+  updateLevelRangeUI(minIndex, maxIndex);
+  if (commit && updateLevelRangeState(minIndex, maxIndex)) {
+    renderAll();
+  }
+}
+
+function setActiveLevelRange(active) {
+  if (!dom.levelMinRange || !dom.levelMaxRange) {
+    return;
+  }
+  if (active === "min") {
+    dom.levelMinRange.style.zIndex = "4";
+    dom.levelMaxRange.style.zIndex = "3";
+  } else {
+    dom.levelMinRange.style.zIndex = "3";
+    dom.levelMaxRange.style.zIndex = "4";
+  }
+}
+
+function updateLevelRangeUI(minIndex, maxIndex) {
+  const maxValue = levelOrder.length - 1;
+  const minPercent = maxValue > 0 ? (minIndex / maxValue) * 100 : 0;
+  const maxPercent = maxValue > 0 ? (maxIndex / maxValue) * 100 : 100;
+
+  if (dom.levelRangeFill) {
+    dom.levelRangeFill.style.left = `${Math.min(100, Math.max(0, minPercent))}%`;
+    dom.levelRangeFill.style.right = `${Math.min(100, Math.max(0, 100 - maxPercent))}%`;
+  }
+  const slider = dom.levelRange;
+  const padding = slider ? getRangePadding(slider) : { left: 0, right: 0 };
+  const sliderWidth = slider ? slider.clientWidth : 0;
+  const trackWidth = Math.max(0, sliderWidth - padding.left - padding.right);
+  const minLeft = padding.left + trackWidth * (minPercent / 100);
+  const maxLeft = padding.left + trackWidth * (maxPercent / 100);
+
+  if (dom.levelMinLabel) {
+    dom.levelMinLabel.textContent = levelLabelForIndex(minIndex);
+    dom.levelMinLabel.style.left = `${minLeft}px`;
+  }
+  if (dom.levelMaxLabel) {
+    dom.levelMaxLabel.textContent = levelLabelForIndex(maxIndex);
+    dom.levelMaxLabel.style.left = `${maxLeft}px`;
+  }
+}
+
+function bindRangeLabelDrag(label, active) {
+  if (!label) {
+    return;
+  }
+  label.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    setActiveLevelRange(active);
+    label.setPointerCapture(event.pointerId);
+    updateRangeFromPointer(event, active, false);
+
+    const handleMove = (moveEvent) => {
+      updateRangeFromPointer(moveEvent, active, false);
+    };
+
+    const handleEnd = (endEvent) => {
+      updateRangeFromPointer(endEvent, active, true);
+      label.removeEventListener("pointermove", handleMove);
+      label.removeEventListener("pointerup", handleEnd);
+      label.removeEventListener("pointercancel", handleEnd);
+      if (label.hasPointerCapture(event.pointerId)) {
+        label.releasePointerCapture(event.pointerId);
+      }
+    };
+
+    label.addEventListener("pointermove", handleMove);
+    label.addEventListener("pointerup", handleEnd);
+    label.addEventListener("pointercancel", handleEnd);
+  });
+}
+
+function updateRangeFromPointer(event, active, commit) {
+  if (!dom.levelRange || !dom.levelMinRange || !dom.levelMaxRange) {
+    return;
+  }
+  const rect = dom.levelRange.getBoundingClientRect();
+  const padding = getRangePadding(dom.levelRange);
+  const left = rect.left + padding.left;
+  const right = rect.right - padding.right;
+  const width = Math.max(1, right - left);
+  const clamped = Math.min(right, Math.max(left, event.clientX));
+  const percent = (clamped - left) / width;
+  const maxIndex = levelOrder.length - 1;
+  const index = Math.round(percent * maxIndex);
+
+  if (active === "min") {
+    dom.levelMinRange.value = String(index);
+  } else {
+    dom.levelMaxRange.value = String(index);
+  }
+  handleLevelRangeInput(active, commit);
+}
+
+function getRangePadding(slider) {
+  const styles = window.getComputedStyle(slider);
+  const left = Number.parseFloat(styles.paddingLeft) || 0;
+  const right = Number.parseFloat(styles.paddingRight) || left;
+  return { left, right };
+}
+
+function updateLevelRangeState(minIndex, maxIndex) {
+  const lastIndex = levelOrder.length - 1;
+  let nextMin = "all";
+  let nextMax = "all";
+  if (!(minIndex === 0 && maxIndex === lastIndex)) {
+    nextMin = levelOrder[minIndex] || "all";
+    nextMax = levelOrder[maxIndex] || "all";
+  }
+  const changed = nextMin !== state.minLevel || nextMax !== state.maxLevel;
+  state.minLevel = nextMin;
+  state.maxLevel = nextMax;
+  return changed;
+}
+
+function levelLabelForIndex(index) {
+  const level = levelOrder[index];
+  if (!level) {
+    return "";
+  }
+  return levelLabels[level] || level.toUpperCase();
 }
 
 function passesFilters(entry) {
@@ -428,17 +663,15 @@ function passesFilters(entry) {
     return false;
   }
 
-  if (state.channel !== "all") {
+  if (state.selectedChannels.size) {
     const channelValue = getChannelValue(entry);
-    if (state.channel === CHANNEL_UNSPECIFIED) {
-      if (isChannelSpecified(channelValue)) {
+    if (!isChannelSpecified(channelValue)) {
+      if (!state.selectedChannels.has(CHANNEL_UNSPECIFIED)) {
         return false;
       }
     } else {
-      if (!isChannelSpecified(channelValue)) {
-        return false;
-      }
-      if (String(channelValue).trim() !== state.channel) {
+      const label = String(channelValue).trim();
+      if (!state.selectedChannels.has(label)) {
         return false;
       }
     }
@@ -452,9 +685,10 @@ function passesFilters(entry) {
     }
   }
 
-  if (state.search) {
-    const haystack = String(entry.raw || "").toLowerCase();
-    if (!haystack.includes(state.search)) {
+  if (state.maxLevel !== "all") {
+    const maxRank = levelRank[state.maxLevel] || 0;
+    const entryRank = levelRank[level] || 0;
+    if (entryRank > maxRank) {
       return false;
     }
   }
@@ -612,21 +846,18 @@ function parseFilterExpression(input) {
   if (!raw) {
     return { ok: false, error: "Filter is empty." };
   }
-  let expr = raw;
-  const selectMatch = expr.match(/^select\s*\((.*)\)$/);
-  if (selectMatch) {
-    expr = selectMatch[1].trim();
-  } else {
-    const shorthand = parseMessageContainsShorthand(expr);
-    if (shorthand) {
-      return { ok: true, expression: shorthand };
-    }
+  if (/^select\s*\(/i.test(raw)) {
+    return { ok: false, error: "Select syntax is not supported." };
   }
-  const regexResult = parseRegexShorthand(expr);
+  const shorthand = parseMessageContainsShorthand(raw);
+  if (shorthand) {
+    return { ok: true, expression: shorthand };
+  }
+  const regexResult = parseRegexShorthand(raw);
   if (regexResult) {
     return regexResult;
   }
-  const pathResult = parsePathExpression(expr);
+  const pathResult = parsePathExpression(raw);
   if (!pathResult.ok) {
     return pathResult;
   }
@@ -1416,36 +1647,46 @@ function addChannelValue(value, incremental) {
 }
 
 function renderChannelOptions() {
-  const selected = dom.channelSelect.value || state.channel || "all";
-  const options = Array.from(state.channelOptions);
-  options.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-
-  dom.channelSelect.innerHTML = "";
-  const allOption = document.createElement("option");
-  allOption.value = "all";
-  allOption.textContent = "All";
-  dom.channelSelect.appendChild(allOption);
-
-  const unspecifiedOption = document.createElement("option");
-  unspecifiedOption.value = CHANNEL_UNSPECIFIED;
-  unspecifiedOption.textContent = "Unspecified";
-  dom.channelSelect.appendChild(unspecifiedOption);
-
-  for (const option of options) {
-    const opt = document.createElement("option");
-    opt.value = option;
-    opt.textContent = option;
-    dom.channelSelect.appendChild(opt);
+  if (!dom.channelButtons) {
+    return;
   }
-
-  let nextValue = "all";
-  if (selected === CHANNEL_UNSPECIFIED || selected === "all") {
-    nextValue = selected;
-  } else if (state.channelOptions.has(selected)) {
-    nextValue = selected;
+  const options = new Set(state.channelOptions);
+  for (const selected of state.selectedChannels) {
+    if (selected !== CHANNEL_UNSPECIFIED) {
+      options.add(selected);
+    }
   }
-  dom.channelSelect.value = nextValue;
-  state.channel = nextValue;
+  const sorted = Array.from(options);
+  sorted.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+
+  dom.channelButtons.innerHTML = "";
+  dom.channelButtons.appendChild(
+    buildChannelButton("All", CHANNEL_ALL, state.selectedChannels.size === 0),
+  );
+  dom.channelButtons.appendChild(
+    buildChannelButton(
+      "Unspecified",
+      CHANNEL_UNSPECIFIED,
+      state.selectedChannels.has(CHANNEL_UNSPECIFIED),
+    ),
+  );
+
+  for (const option of sorted) {
+    dom.channelButtons.appendChild(
+      buildChannelButton(option, option, state.selectedChannels.has(option)),
+    );
+  }
+}
+
+function buildChannelButton(label, value, isActive) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "button-group-button";
+  button.dataset.channel = value;
+  button.setAttribute("aria-pressed", String(Boolean(isActive)));
+  button.setAttribute("data-state", isActive ? "on" : "off");
+  button.textContent = label;
+  return button;
 }
 
 function getChannelValue(entry) {

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>zlog - NDJSON stream viewer</title>
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="icon" href="/logo.png" type="image/png" />
   </head>
   <body>
     <div class="shell" id="shell">
@@ -14,31 +15,43 @@
         </div>
       </div>
       <header class="topbar">
-        <div class="toolbar">
-          <div class="control">
-            <label for="searchInput">Search</label>
-            <input id="searchInput" type="text" placeholder="match text or JSON" />
+        <div class="toolbar-row">
+          <div class="toolbar">
+            <div class="control">
+              <label class="field-label" for="levelMinRange">Level range</label>
+              <div class="range-slider" id="levelRange">
+                <div class="range-track">
+                  <div class="range-fill" id="levelRangeFill"></div>
+                </div>
+                <input
+                  id="levelMinRange"
+                  class="range-input range-min"
+                  type="range"
+                  min="0"
+                  max="5"
+                  step="1"
+                  value="0"
+                  aria-label="Minimum level"
+                />
+                <input
+                  id="levelMaxRange"
+                  class="range-input range-max"
+                  type="range"
+                  min="0"
+                  max="5"
+                  step="1"
+                  value="5"
+                  aria-label="Maximum level"
+                />
+                <div class="range-label range-label-min" id="levelMinLabel">Trace</div>
+                <div class="range-label range-label-max" id="levelMaxLabel">Fatal</div>
+              </div>
+            </div>
+            <div class="control">
+              <label class="field-label">Channel</label>
+              <div class="button-group" id="channelButtons" role="group" aria-label="Channel filters"></div>
+            </div>
           </div>
-          <div class="control">
-            <label for="levelSelect">Min level</label>
-            <select id="levelSelect">
-              <option value="all">All</option>
-              <option value="trace">Trace+</option>
-              <option value="debug">Debug+</option>
-              <option value="info">Info+</option>
-              <option value="warn">Warn+</option>
-              <option value="error">Error+</option>
-              <option value="fatal">Fatal</option>
-            </select>
-          </div>
-          <div class="control">
-            <label for="channelSelect">Channel</label>
-            <select id="channelSelect">
-              <option value="all">All</option>
-            </select>
-          </div>
-        </div>
-        <div class="toggle-row">
           <div class="toggles">
             <label class="toggle">
               <input id="toggleAuto" type="checkbox" checked />
@@ -95,13 +108,12 @@
                   <span class="filter-help-tooltip" role="tooltip">
                     <span class="filter-help-title">Examples</span>
                     <span class="filter-help-row"><code>timeout</code> (message contains)</span>
-                    <span class="filter-help-row"><code>/timeout/i</code> (regex)</span>
+                    <span class="filter-help-row"><code>/^aws/i</code> (regex)</span>
                     <span class="filter-help-row"><code>.level == "error"</code></span>
                     <span class="filter-help-row"><code>.channel == "action"</code></span>
                     <span class="filter-help-row"><code>.session</code> (field exists)</span>
                     <span class="filter-help-row"><code>.duration >= 120</code></span>
                     <span class="filter-help-row"><code>.message contains "timeout"</code></span>
-                    <span class="filter-help-row"><code>select(.user.id == "42")</code></span>
                     <span class="filter-help-row"><code>.tags[0] == "api"</code></span>
                   </span>
                 </span>
