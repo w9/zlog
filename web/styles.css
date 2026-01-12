@@ -1177,6 +1177,48 @@ body::after {
   }
 }
 
+@media (max-width: 1200px) {
+  .shell {
+    gap: 0;
+  }
+
+  .shell-title {
+    margin-bottom: 16px;
+  }
+
+  .layout {
+    display: contents;
+  }
+
+  .log-panel {
+    flex: 1;
+    border-top: none;
+    border-bottom: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .log-panel > .panel-header {
+    display: none;
+  }
+
+  .topbar {
+    border-radius: 18px 18px 0 0;
+    box-shadow: none;
+  }
+
+  .status-bar {
+    box-shadow: none;
+    border-radius: 0 0 18px 18px;
+  }
+
+  .detail-panel {
+    order: 1;
+    margin-top: 16px;
+    max-height: 40vh;
+  }
+}
+
 
 @media (max-width: 960px) {
   .layout {
