@@ -492,7 +492,7 @@ body::after {
 }
 
 .shell.detail-open .layout {
-  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 2.2fr) minmax(600px, 1fr);
 }
 
 .log-panel,
