@@ -19,20 +19,42 @@ When debugging services that output structured JSON logs (kubernetes pods, Docke
 - **Performance-Optimized**: Handles near infinite entries with incremental DOM updates, debounced filters, and CSS containment for smooth typing
 - **Local and Persistent**: All preferences stored in browser localStorage
 
+## Installation
+
+**Homebrew (macOS/Linux):**
+```bash
+brew install w9/zlog/zlog
+```
+
+**Go:**
+```bash
+go install github.com/w9/zlog@latest
+```
+
+**From Source:**
+```bash
+git clone https://github.com/w9/zlog.git
+cd zlog
+go build -o zlog
+```
+
+**Pre-built Binaries:**
+
+Download from [GitHub Releases](https://github.com/w9/zlog/releases/latest) for Linux, macOS, and Windows (AMD64/ARM64).
+
 ## Quick Start
 
-Build and pipe logs from kubectl:
+Pipe logs from kubectl:
 
 ```bash
-go build -o zlog
-kubectl logs my-pod -f | ./zlog
+kubectl logs my-pod -f | zlog
 ```
 
 Or use with any NDJSON source:
 
 ```bash
-docker logs my-container --follow | ./zlog
-cat application.log | ./zlog
+docker logs my-container --follow | zlog
+cat application.log | zlog
 ```
 
 Then open **http://localhost:8037** in your browser.
