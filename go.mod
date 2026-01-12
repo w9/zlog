@@ -1,3 +1,3 @@
-module zlog
+module github.com/w9/zlog
 
-go 1.20
+go 1.25.5
