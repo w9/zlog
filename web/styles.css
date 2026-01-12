@@ -189,6 +189,10 @@ body::after {
   padding: 0 4px;
 }
 
+.shell-title.shell-title-mobile {
+  display: none;
+}
+
 .toolbar-tagline {
   font-weight: 500;
   letter-spacing: 0.04em;
@@ -1179,43 +1183,72 @@ body::after {
 
 @media (max-width: 1200px) {
   .shell {
+    padding: 0;
     gap: 0;
   }
 
-  .shell-title {
-    margin-bottom: 16px;
+  .shell-title.shell-title-main {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    border: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .shell-title.shell-title-mobile {
+    display: flex;
+    padding: 12px 16px 8px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
   }
 
   .layout {
     display: contents;
   }
 
+  .topbar {
+    border-radius: 0;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    box-shadow: none;
+  }
+
   .log-panel {
     flex: 1;
-    border-top: none;
-    border-bottom: none;
+    border: 0;
     border-radius: 0;
     box-shadow: none;
+    min-height: 0;
   }
 
   .log-panel > .panel-header {
     display: none;
   }
 
-  .topbar {
-    border-radius: 18px 18px 0 0;
+  .detail-panel {
+    order: 1;
+    margin: 0;
+    border: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
     box-shadow: none;
+    background: var(--panel);
+    max-height: 40vh;
+  }
+
+  .detail-panel .panel-header {
+    border-bottom: 1px solid var(--border);
   }
 
   .status-bar {
+    border-radius: 0;
+    border: 0;
+    border-top: 1px solid var(--border);
     box-shadow: none;
-    border-radius: 0 0 18px 18px;
-  }
-
-  .detail-panel {
-    order: 1;
-    margin-top: 16px;
-    max-height: 40vh;
   }
 }
 
