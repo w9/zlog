@@ -11,6 +11,7 @@
 - Keep the UI in plain HTML/CSS/JS (no frameworks).
 - If filter syntax changes, update the tooltip examples in `web/index.html` and the README.
 - Prefer small, direct changes over abstractions.
+- When right-aligning a flex child, use a spacer with `flex: 1` instead of relying on `justify-content`.
 
 ## Useful commands
 

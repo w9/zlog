@@ -71,6 +71,10 @@ const latencyStats = {
   lastUpdate: 0,
   updateEveryMs: 1000,
 };
+const RESIZE_HIDE_CLASS = "resizing-window";
+const RESIZE_HIDE_DELAY_MS = 200;
+let resizeHideTimer = null;
+let isWideLayout = false;
 
 function init() {
   cacheDom();
@@ -81,6 +85,8 @@ function init() {
   loadStoredFilters();
   syncToggleButtons();
   bindEvents();
+  isWideLayout = window.innerWidth >= 1200;
+  setToolbarExpanded(isWideLayout);
   updateStatus("connecting", "waiting for stream");
   loadConfig();
   loadInitialLogs().finally(connectStream);
@@ -94,6 +100,7 @@ function init() {
 
 function cacheDom() {
   dom.shell = document.getElementById("shell");
+  dom.topbar = document.querySelector(".topbar");
   dom.logPanel = document.getElementById("logPanel");
   dom.logList = document.getElementById("logList");
   dom.levelRange = document.getElementById("levelRange");
@@ -128,12 +135,15 @@ function cacheDom() {
   dom.selectedCount = document.getElementById("selectedCount");
   dom.selectedSep = document.getElementById("selectedSep");
   dom.statusText = document.getElementById("statusText");
+  dom.statusTextLabel = document.getElementById("statusTextLabel");
   dom.detailPanel = document.querySelector(".detail-panel");
   dom.detailEmpty = document.getElementById("detailEmpty");
   dom.detailLevel = document.getElementById("detailLevel");
   dom.detailTime = document.getElementById("detailTime");
   dom.detailIngested = document.getElementById("detailIngested");
   dom.detailChannel = document.getElementById("detailChannel");
+  dom.detailPid = document.getElementById("detailPid");
+  dom.detailHostname = document.getElementById("detailHostname");
   dom.detailMessage = document.getElementById("detailMessage");
   dom.detailParseError = document.getElementById("detailParseError");
   dom.detailFields = document.getElementById("detailFields");
@@ -142,6 +152,7 @@ function cacheDom() {
   dom.scrollBottomBtn = document.getElementById("scrollBottomBtn");
   dom.logFilters = document.getElementById("logFilters");
   dom.filterInputTag = document.getElementById("filterInputTag");
+  dom.toolbarCollapseBtn = document.getElementById("toolbarCollapseBtn");
 }
 
 function bindEvents() {
@@ -304,6 +315,12 @@ function bindEvents() {
   dom.logList.addEventListener("scroll", () => {
     setStickToBottom(isAtBottom());
   });
+
+  window.addEventListener("resize", handleWindowResize, { passive: true });
+
+  if (dom.toolbarCollapseBtn) {
+    dom.toolbarCollapseBtn.addEventListener("click", toggleToolbarCollapse);
+  }
 
   document.addEventListener("keydown", handleKeydown);
 }
@@ -1821,6 +1838,16 @@ function getUsedFieldKeys(entry) {
     used.add(parseErrorKey.toLowerCase());
   }
 
+  const pidKey = findFirstFieldKey(fields, ["pid"]);
+  if (pidKey) {
+    used.add(pidKey.toLowerCase());
+  }
+
+  const hostnameKey = findFirstFieldKey(fields, ["hostname", "host"]);
+  if (hostnameKey) {
+    used.add(hostnameKey.toLowerCase());
+  }
+
   return used;
 }
 
@@ -2225,6 +2252,8 @@ function selectEntry(id) {
   dom.detailTime.textContent = entry.time || "-";
   dom.detailIngested.textContent = entry.ingested || "-";
   dom.detailChannel.textContent = formatChannel(getChannelValue(entry));
+  dom.detailPid.textContent = formatDetailValue(getFieldValue(entry, "pid"));
+  dom.detailHostname.textContent = formatDetailValue(getFieldValue(entry, "hostname"));
   dom.detailMessage.textContent = entry.msg || entry.raw || "-";
   dom.detailParseError.textContent = entry.parseError || "-";
   dom.detailRaw.textContent = entry.raw || "";
@@ -2249,6 +2278,8 @@ function clearDetailPanel() {
   dom.detailTime.textContent = "-";
   dom.detailIngested.textContent = "-";
   dom.detailChannel.textContent = "-";
+  dom.detailPid.textContent = "-";
+  dom.detailHostname.textContent = "-";
   dom.detailMessage.textContent = "-";
   dom.detailParseError.textContent = "-";
   dom.detailRaw.textContent = "";
@@ -2460,7 +2491,11 @@ function updateStatus(text, meta) {
     parts.push(state.latencyMeta);
   }
 
-  dom.statusText.textContent = parts.join(" ").trim();
+  if (dom.statusTextLabel) {
+    dom.statusTextLabel.textContent = parts.join(" ").trim();
+  } else {
+    dom.statusText.textContent = parts.join(" ").trim();
+  }
   setStatusClass(dom.statusText, statusTextClass(state.statusText));
 }
 
@@ -2485,6 +2520,42 @@ function setStatusClass(element, className) {
   statusClassNames.forEach((name) => element.classList.remove(name));
   if (className) {
     element.classList.add(className);
+  }
+}
+
+function handleWindowResize() {
+  document.body.classList.add(RESIZE_HIDE_CLASS);
+  if (resizeHideTimer) {
+    window.clearTimeout(resizeHideTimer);
+  }
+  resizeHideTimer = window.setTimeout(() => {
+    document.body.classList.remove(RESIZE_HIDE_CLASS);
+    resizeHideTimer = null;
+  }, RESIZE_HIDE_DELAY_MS);
+
+  const nextIsWide = window.innerWidth >= 1200;
+  if (nextIsWide !== isWideLayout) {
+    isWideLayout = nextIsWide;
+    setToolbarExpanded(isWideLayout);
+  }
+}
+
+function toggleToolbarCollapse() {
+  if (!dom.topbar || !dom.toolbarCollapseBtn) {
+    return;
+  }
+  const expanded = dom.topbar.classList.contains("toolbar-expanded");
+  setToolbarExpanded(!expanded);
+}
+
+function setToolbarExpanded(expanded) {
+  if (!dom.topbar) {
+    return;
+  }
+  dom.topbar.classList.toggle("toolbar-expanded", expanded);
+  if (dom.toolbarCollapseBtn) {
+    setToggleButtonState(dom.toolbarCollapseBtn, expanded);
+    dom.toolbarCollapseBtn.setAttribute("aria-expanded", expanded ? "true" : "false");
   }
 }
 

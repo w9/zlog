@@ -9,13 +9,13 @@
   </head>
   <body>
     <div class="shell" id="shell">
-      <div class="shell-title shell-title-main">
-        <div class="panel-title">
-          ZLOG <span class="toolbar-tagline">(NDJSON stream viewer)</span>
-        </div>
-      </div>
       <header class="topbar">
-        <div class="toolbar-row">
+        <div class="toolbar-row" id="toolbarRow">
+          <div class="shell-title shell-title-main">
+            <div class="panel-title">
+              ZLOG <span class="toolbar-tagline">(NDJSON stream viewer)</span>
+            </div>
+          </div>
           <div class="toggles">
             <button
               id="toggleAuto"
@@ -174,7 +174,21 @@
               </div>
             </div>
           </div>
+          <div class="toolbar-spacer" aria-hidden="true"></div>
           <div class="actions">
+            <button
+              id="toolbarCollapseBtn"
+              class="toggle-btn toolbar-collapse-btn"
+              type="button"
+              aria-pressed="true"
+              data-state="on"
+              aria-label="Toggle toolbar"
+            >
+              <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7,10L12,15L17,10H7Z" />
+              </svg>
+              <span>Toolbar</span>
+            </button>
             <button id="pauseBtn" class="toggle-btn" type="button" aria-pressed="false" data-state="off">
               <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M14,19H18V5H14M6,19H10V5H6V19Z" />
@@ -199,15 +213,13 @@
 
       <main class="layout">
         <section class="log-panel" id="logPanel">
-          <div class="shell-title shell-title-mobile">
-            <div class="panel-title">
-              ZLOG <span class="toolbar-tagline">(NDJSON stream viewer)</span>
-            </div>
-          </div>
           <div class="panel-header">
             <div class="panel-title">Logs</div>
           </div>
           <div class="log-list" id="logList"></div>
+          <div class="resize-placeholder" role="status" aria-live="polite">
+            Resizing—rendering paused until layout stabilizes.
+          </div>
           <button
             id="scrollBottomBtn"
             class="scroll-bottom-btn"
@@ -250,14 +262,22 @@
                   <div class="detail-key">Ingested</div>
                   <div class="detail-value" id="detailIngested">-</div>
                 </div>
-                <div class="detail-row">
-                  <div class="detail-key">Channel</div>
-                  <div class="detail-value" id="detailChannel">-</div>
-                </div>
-                <div class="detail-row">
-                  <div class="detail-key">Message</div>
-                  <div class="detail-value" id="detailMessage">-</div>
-                </div>
+            <div class="detail-row">
+              <div class="detail-key">Channel</div>
+              <div class="detail-value" id="detailChannel">-</div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-key">PID</div>
+              <div class="detail-value" id="detailPid">-</div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-key">Hostname</div>
+              <div class="detail-value" id="detailHostname">-</div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-key">Message</div>
+              <div class="detail-value" id="detailMessage">-</div>
+            </div>
                 <div class="detail-row">
                   <div class="detail-key">Parse Error</div>
                   <div class="detail-value" id="detailParseError">-</div>
@@ -298,6 +318,7 @@
             <kbd class="kbd">ESC</kbd>
           </span>
         </div>
+        <span class="status-spacer" aria-hidden="true"></span>
         <div class="status-right">
           <div class="panel-meta">
             <span id="countTotal">0</span> total
@@ -309,7 +330,12 @@
             <span id="selectedCount" style="display: none;"><span id="countSelected">0</span> selected</span>
           </div>
           <div class="status-line">
-            <span class="status-item" id="statusText">connecting</span>
+            <span class="status-item" id="statusText">
+              <svg class="status-dot" viewBox="0 0 10 10" aria-hidden="true" focusable="false">
+                <circle cx="5" cy="5" r="5" />
+              </svg>
+              <span id="statusTextLabel">connecting</span>
+            </span>
           </div>
         </div>
       </footer>
