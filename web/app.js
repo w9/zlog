@@ -63,7 +63,6 @@ let filterInputTimer = null;
 let pendingFilterRaw = "";
 let pendingFilterExpression = null;
 let isUserTyping = false;
-let scrollUpdateTimer = null;
 const filterStorageKey = "zlog-filters";
 const latencyStats = {
   samples: [],
@@ -123,6 +122,9 @@ function cacheDom() {
   dom.countTotal = document.getElementById("countTotal");
   dom.countFiltered = document.getElementById("countFiltered");
   dom.newCount = document.getElementById("newCount");
+  dom.countSelected = document.getElementById("countSelected");
+  dom.selectedCount = document.getElementById("selectedCount");
+  dom.selectedSep = document.getElementById("selectedSep");
   dom.statusText = document.getElementById("statusText");
   dom.detailPanel = document.querySelector(".detail-panel");
   dom.detailEmpty = document.getElementById("detailEmpty");
@@ -291,13 +293,7 @@ function bindEvents() {
   });
 
   dom.logList.addEventListener("scroll", () => {
-    if (isUserTyping) {
-      return;
-    }
-    clearTimeout(scrollUpdateTimer);
-    scrollUpdateTimer = setTimeout(() => {
-      setStickToBottom(isAtBottom());
-    }, 50);
+    setStickToBottom(isAtBottom());
   });
 
   document.addEventListener("keydown", handleKeydown);
@@ -415,13 +411,14 @@ function persistFilters() {
 
 function setPaused(paused) {
   state.paused = paused;
-  const label = paused ? "Resume" : "Pause";
-  dom.pauseBtn.textContent = label;
-  if (dom.pauseBtnFloatLabel) {
-    dom.pauseBtnFloatLabel.textContent = label;
-  }
+  dom.pauseBtn.dataset.state = paused ? "on" : "off";
+  dom.pauseBtn.setAttribute("aria-pressed", paused ? "true" : "false");
   if (dom.pauseBtnFloat) {
     dom.pauseBtnFloat.dataset.paused = paused ? "true" : "false";
+  }
+  if (dom.pauseBtnFloatLabel) {
+    const label = paused ? "Resume" : "Pause";
+    dom.pauseBtnFloatLabel.textContent = label;
   }
   updateStatus();
   if (!paused) {
@@ -2051,34 +2048,50 @@ function syncSelectionWithVisible(visibleIds) {
 }
 
 function updateExportButton() {
-  const isDisabled = state.selectedIds.size === 0;
-  if (dom.exportBtn) {
-    dom.exportBtn.disabled = isDisabled;
-  }
-  if (dom.exportBtnFloat) {
-    dom.exportBtnFloat.disabled = isDisabled;
+  // Export button is always enabled (exports all if nothing selected)
+  // Update selected count display
+  const count = state.selectedIds.size;
+  if (count > 0) {
+    dom.countSelected.textContent = count;
+    dom.selectedCount.style.display = "";
+    dom.selectedSep.style.display = "";
+  } else {
+    dom.selectedCount.style.display = "none";
+    dom.selectedSep.style.display = "none";
   }
 }
 
 function exportSelected() {
-  if (!state.selectedIds.size) {
+  let entriesToExport;
+  
+  if (state.selectedIds.size === 0) {
+    // Export all logs
+    if (state.logs.length > 1000) {
+      const confirmed = confirm(`Export all ${state.logs.length} logs?`);
+      if (!confirmed) {
+        return;
+      }
+    }
+    entriesToExport = state.logs;
+  } else {
+    // Export selected logs
+    const ids = getVisibleRowIds();
+    entriesToExport = [];
+    for (const id of ids) {
+      if (state.selectedIds.has(id)) {
+        const entry = state.logs.find((log) => log.id === id);
+        if (entry) {
+          entriesToExport.push(entry);
+        }
+      }
+    }
+  }
+  
+  if (!entriesToExport.length) {
     return;
   }
-  const ids = getVisibleRowIds();
-  const lines = [];
-  for (const id of ids) {
-    if (!state.selectedIds.has(id)) {
-      continue;
-    }
-    const entry = state.logs.find((log) => log.id === id);
-    if (!entry) {
-      continue;
-    }
-    lines.push(formatExportLine(entry));
-  }
-  if (!lines.length) {
-    return;
-  }
+  
+  const lines = entriesToExport.map(entry => formatExportLine(entry));
   const content = `${lines.join("\n")}\n`;
   const blob = new Blob([content], { type: "application/jsonl" });
   const url = URL.createObjectURL(blob);
@@ -2224,9 +2237,6 @@ function scrollToBottom() {
 }
 
 function isAtBottom() {
-  if (isUserTyping) {
-    return state.stickToBottom;
-  }
   const threshold = 6;
   const { scrollTop, scrollHeight, clientHeight } = dom.logList;
   return scrollHeight - scrollTop - clientHeight <= threshold;
@@ -2266,6 +2276,10 @@ function handleKeydown(event) {
   }
 
   switch (event.key) {
+    case "Escape":
+      event.preventDefault();
+      clearSelection();
+      break;
     case "j":
     case "ArrowDown":
       event.preventDefault();

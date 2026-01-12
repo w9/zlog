@@ -200,7 +200,6 @@ body::after {
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
-  padding-top: 6px;
 }
 
 .toolbar {
@@ -231,12 +230,10 @@ body::after {
 
 .control input:not(.range-input),
 .control select {
-  padding: 4px 6px;
-  border-radius: 6px;
-  border: 1px solid var(--input-border);
+  padding: 0;
   background: var(--input-bg);
   color: var(--ink);
-  font-size: 0.72rem;
+  font-size: 0.6rem;
 }
 
 .range-slider {
@@ -500,6 +497,11 @@ body::after {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  padding-bottom: 12px;
+}
+
+.detail-panel {
+  display: none;
 }
 
 .log-panel {
@@ -547,7 +549,7 @@ body::after {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 8px;
+  padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid var(--filter-border);
   background: var(--filter-bg);
@@ -556,7 +558,7 @@ body::after {
 }
 
 .filter-input-tag {
-  padding: 2px 8px;
+  padding: 4px 10px;
   background: var(--input-bg);
   border-color: var(--input-border);
 }
@@ -566,7 +568,7 @@ body::after {
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 0.6rem;
+  font-size: 0.68rem;
   line-height: 1.1;
   width: 160px;
   min-width: 120px;
@@ -1060,11 +1062,6 @@ body::after {
   max-width: none;
   white-space: normal;
   word-break: break-word;
-}
-
-.detail-panel {
-  display: none;
-  padding-bottom: 12px;
 }
 
 .shell.detail-open .detail-panel {

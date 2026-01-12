@@ -145,11 +145,54 @@
               <label class="field-label">Channel</label>
               <div class="button-group" id="channelButtons" role="group" aria-label="Channel filters"></div>
             </div>
+            <div class="control">
+              <label class="field-label">Filter</label>
+              <div class="log-filters" id="logFilters">
+                <div class="filter-tag filter-input-tag" id="filterInputTag">
+                  <input
+                    id="filterInput"
+                    class="filter-input"
+                    type="text"
+                    placeholder="Add a filter"
+                    autocomplete="off"
+                    aria-label="Filter"
+                  />
+                  <span class="filter-help" aria-label="Filter syntax help">
+                    ?
+                    <span class="filter-help-tooltip" role="tooltip">
+                      <span class="filter-help-title">Examples</span>
+                      <span class="filter-help-row"><code>abc</code> (search in message)</span>
+                      <span class="filter-help-row"><code>/^aws/i</code> (regex)</span>
+                      <span class="filter-help-row"><code>.hostname == "myhost"</code></span>
+                      <span class="filter-help-row"><code>.session</code> (field exists)</span>
+                      <span class="filter-help-row"><code>.duration >= 120</code></span>
+                      <span class="filter-help-row"><code>.term contains "list"</code></span>
+                      <span class="filter-help-row"><code>.tags[0] == "api"</code></span>
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="actions">
-            <button id="pauseBtn" class="btn">Pause</button>
-            <button id="exportBtn" class="btn ghost">Export</button>
-            <button id="clearBtn" class="btn ghost">Clear</button>
+            <button id="pauseBtn" class="toggle-btn" type="button" aria-pressed="false" data-state="off">
+              <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M14,19H18V5H14M6,19H10V5H6V19Z" />
+              </svg>
+              <span>Pause</span>
+            </button>
+            <button id="exportBtn" class="toggle-btn" type="button">
+              <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M12,19L8,15H10.5V12H13.5V15H16L12,19Z" />
+              </svg>
+              <span>Export</span>
+            </button>
+            <button id="clearBtn" class="toggle-btn" type="button">
+              <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
+              </svg>
+              <span>Clear</span>
+            </button>
           </div>
         </div>
       </header>
@@ -158,31 +201,6 @@
         <section class="log-panel" id="logPanel">
           <div class="panel-header">
             <div class="panel-title">Logs</div>
-            <div class="log-filters" id="logFilters">
-              <div class="filter-tag filter-input-tag" id="filterInputTag">
-                <input
-                  id="filterInput"
-                  class="filter-input"
-                  type="text"
-                  placeholder="Add a filter"
-                  autocomplete="off"
-                  aria-label="Filter"
-                />
-                <span class="filter-help" aria-label="Filter syntax help">
-                  ?
-                  <span class="filter-help-tooltip" role="tooltip">
-                    <span class="filter-help-title">Examples</span>
-                    <span class="filter-help-row"><code>abc</code> (search in message)</span>
-                    <span class="filter-help-row"><code>/^aws/i</code> (regex)</span>
-                    <span class="filter-help-row"><code>.hostname == "myhost"</code></span>
-                    <span class="filter-help-row"><code>.session</code> (field exists)</span>
-                    <span class="filter-help-row"><code>.duration >= 120</code></span>
-                    <span class="filter-help-row"><code>.term contains "list"</code></span>
-                    <span class="filter-help-row"><code>.tags[0] == "api"</code></span>
-                  </span>
-                </span>
-              </div>
-            </div>
           </div>
           <div class="log-list" id="logList"></div>
           <button
@@ -269,6 +287,11 @@
             <span class="shortcut-label">Bottom</span>
             <kbd class="kbd">Space</kbd>
           </span>
+          <span class="shortcut-sep">|</span>
+          <span class="shortcut-group">
+            <span class="shortcut-label">Deselect</span>
+            <kbd class="kbd">ESC</kbd>
+          </span>
         </div>
         <div class="status-right">
           <div class="panel-meta">
@@ -277,6 +300,8 @@
             <span id="countFiltered">0</span> visible
             <span class="sep">|</span>
             <span id="newCount">0</span> new
+            <span class="sep" id="selectedSep" style="display: none;">|</span>
+            <span id="selectedCount" style="display: none;"><span id="countSelected">0</span> selected</span>
           </div>
           <div class="status-line">
             <span class="status-item" id="statusText">connecting</span>
