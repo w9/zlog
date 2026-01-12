@@ -27,6 +27,8 @@ const state = {
   logs: [],
   filteredCount: 0,
   selectedId: null,
+  selectedIds: new Set(),
+  anchorId: null,
   paused: false,
   autoScroll: true,
   wrap: false,
@@ -46,6 +48,8 @@ const state = {
   altRows: false,
   statusText: "",
   statusMeta: "",
+  latencyMeta: "",
+  debugLatency: false,
   stickToBottom: true,
   channelOptions: new Set(),
   hasUnspecifiedChannel: false,
@@ -58,13 +62,23 @@ const filterInputDelay = 150;
 let filterInputTimer = null;
 let pendingFilterRaw = "";
 let pendingFilterExpression = null;
+let isUserTyping = false;
+let scrollUpdateTimer = null;
 const filterStorageKey = "zlog-filters";
+const latencyStats = {
+  samples: [],
+  maxSamples: 200,
+  lastUpdate: 0,
+  updateEveryMs: 1000,
+};
 
 function init() {
   cacheDom();
   initLevelRange();
   initTheme();
+  initLatencyDebug();
   loadStoredFilters();
+  syncToggleButtons();
   bindEvents();
   updateStatus("connecting", "waiting for stream");
   loadConfig();
@@ -74,10 +88,12 @@ function init() {
   dom.logList.classList.toggle("tags-on", state.showTags);
   dom.logList.classList.toggle("channel-on", state.showChannel);
   renderFilterTags();
+  updateExportButton();
 }
 
 function cacheDom() {
   dom.shell = document.getElementById("shell");
+  dom.logPanel = document.getElementById("logPanel");
   dom.logList = document.getElementById("logList");
   dom.levelRange = document.getElementById("levelRange");
   dom.levelMinRange = document.getElementById("levelMinRange");
@@ -95,7 +111,14 @@ function cacheDom() {
   dom.toggleDark = document.getElementById("toggleDark");
   dom.toggleTags = document.getElementById("toggleTags");
   dom.pauseBtn = document.getElementById("pauseBtn");
+  dom.exportBtn = document.getElementById("exportBtn");
   dom.clearBtn = document.getElementById("clearBtn");
+  dom.pauseBtnFloat = document.getElementById("pauseBtnFloat");
+  dom.exportBtnFloat = document.getElementById("exportBtnFloat");
+  dom.clearBtnFloat = document.getElementById("clearBtnFloat");
+  dom.pauseBtnFloatLabel = dom.pauseBtnFloat
+    ? dom.pauseBtnFloat.querySelector(".log-action-label")
+    : null;
   dom.closeBtn = document.getElementById("closeBtn");
   dom.countTotal = document.getElementById("countTotal");
   dom.countFiltered = document.getElementById("countFiltered");
@@ -112,7 +135,7 @@ function cacheDom() {
   dom.detailFields = document.getElementById("detailFields");
   dom.detailRaw = document.getElementById("detailRaw");
   dom.copyRawBtn = document.getElementById("copyRawBtn");
-  dom.bottomIndicator = document.getElementById("bottomIndicator");
+  dom.scrollBottomBtn = document.getElementById("scrollBottomBtn");
   dom.logFilters = document.getElementById("logFilters");
   dom.filterInputTag = document.getElementById("filterInputTag");
 }
@@ -173,59 +196,87 @@ function bindEvents() {
   });
   dom.filterInput.addEventListener("input", () => {
     dom.filterInput.setCustomValidity("");
-    handleFilterInputChange();
+    isUserTyping = true;
+    clearTimeout(filterInputTimer);
+    filterInputTimer = setTimeout(() => {
+      isUserTyping = false;
+      handleFilterInputChange();
+    }, filterInputDelay);
   });
 
-  dom.toggleAuto.addEventListener("change", () => {
-    state.autoScroll = dom.toggleAuto.checked;
+  dom.toggleAuto.addEventListener("click", () => {
+    state.autoScroll = !state.autoScroll;
+    setToggleButtonState(dom.toggleAuto, state.autoScroll);
     if (state.autoScroll) {
       state.stickToBottom = true;
       scrollToBottom();
     }
+    updateBottomUI();
   });
 
-  dom.toggleWrap.addEventListener("change", () => {
-    state.wrap = dom.toggleWrap.checked;
+  dom.toggleWrap.addEventListener("click", () => {
+    state.wrap = !state.wrap;
+    setToggleButtonState(dom.toggleWrap, state.wrap);
     dom.logList.classList.toggle("wrap", state.wrap);
   });
 
-  dom.toggleAlt.addEventListener("change", () => {
-    state.altRows = dom.toggleAlt.checked;
+  dom.toggleAlt.addEventListener("click", () => {
+    state.altRows = !state.altRows;
+    setToggleButtonState(dom.toggleAlt, state.altRows);
     dom.logList.classList.toggle("alt", state.altRows);
   });
 
-  dom.togglePlain.addEventListener("change", () => {
-    state.showPlain = dom.togglePlain.checked;
+  dom.togglePlain.addEventListener("click", () => {
+    state.showPlain = !state.showPlain;
+    setToggleButtonState(dom.togglePlain, state.showPlain);
     renderAll();
   });
 
-  dom.toggleChannel.addEventListener("change", () => {
-    state.showChannel = dom.toggleChannel.checked;
+  dom.toggleChannel.addEventListener("click", () => {
+    state.showChannel = !state.showChannel;
+    setToggleButtonState(dom.toggleChannel, state.showChannel);
     dom.logList.classList.toggle("channel-on", state.showChannel);
     renderAll();
   });
 
-  dom.toggleDark.addEventListener("change", () => {
-    setTheme(dom.toggleDark.checked);
+  dom.toggleDark.addEventListener("click", () => {
+    setTheme(!state.darkMode);
   });
 
-  dom.toggleTags.addEventListener("change", () => {
-    state.showTags = dom.toggleTags.checked;
+  dom.toggleTags.addEventListener("click", () => {
+    state.showTags = !state.showTags;
+    setToggleButtonState(dom.toggleTags, state.showTags);
     dom.logList.classList.toggle("tags-on", state.showTags);
     renderAll();
   });
 
-  dom.pauseBtn.addEventListener("click", () => {
+  const handlePause = () => {
     setPaused(!state.paused);
-  });
+  };
+  dom.pauseBtn.addEventListener("click", handlePause);
+  if (dom.pauseBtnFloat) {
+    dom.pauseBtnFloat.addEventListener("click", handlePause);
+  }
 
-  dom.clearBtn.addEventListener("click", () => {
+  const handleExport = () => {
+    exportSelected();
+  };
+  dom.exportBtn.addEventListener("click", handleExport);
+  if (dom.exportBtnFloat) {
+    dom.exportBtnFloat.addEventListener("click", handleExport);
+  }
+
+  const handleClear = () => {
     state.logs = [];
     state.filteredCount = 0;
     state.newSincePause = 0;
     clearSelection();
     renderAll();
-  });
+  };
+  dom.clearBtn.addEventListener("click", handleClear);
+  if (dom.clearBtnFloat) {
+    dom.clearBtnFloat.addEventListener("click", handleClear);
+  }
 
   dom.closeBtn.addEventListener("click", () => {
     clearSelection();
@@ -235,14 +286,18 @@ function bindEvents() {
     copyRaw();
   });
 
-  dom.bottomIndicator.addEventListener("click", () => {
-    if (!state.stickToBottom) {
-      scrollToBottom();
-    }
+  dom.scrollBottomBtn.addEventListener("click", () => {
+    scrollToBottom();
   });
 
   dom.logList.addEventListener("scroll", () => {
-    setStickToBottom(isAtBottom());
+    if (isUserTyping) {
+      return; // Skip all scroll handling during typing
+    }
+    clearTimeout(scrollUpdateTimer);
+    scrollUpdateTimer = setTimeout(() => {
+      setStickToBottom(isAtBottom());
+    }, 50);
   });
 
   document.addEventListener("keydown", handleKeydown);
@@ -267,9 +322,7 @@ function initTheme() {
 function setTheme(isDark, persist = true) {
   state.darkMode = Boolean(isDark);
   document.body.classList.toggle("theme-dark", state.darkMode);
-  if (dom.toggleDark) {
-    dom.toggleDark.checked = state.darkMode;
-  }
+  setToggleButtonState(dom.toggleDark, state.darkMode);
   if (persist) {
     try {
       localStorage.setItem("zlog-theme", state.darkMode ? "dark" : "light");
@@ -277,6 +330,37 @@ function setTheme(isDark, persist = true) {
       // Ignore storage failures.
     }
   }
+}
+
+function initLatencyDebug() {
+  const params = new URLSearchParams(window.location.search);
+  const debugParam = String(params.get("debug") || "").toLowerCase();
+  const latencyParam = String(params.get("latency") || "").toLowerCase();
+  const hasLatencyParam = params.has("latency");
+  const latencyEnabled =
+    hasLatencyParam && latencyParam !== "0" && latencyParam !== "false" && latencyParam !== "off";
+  state.debugLatency = debugParam === "latency" || latencyEnabled;
+  if (!state.debugLatency) {
+    state.latencyMeta = "";
+  }
+}
+
+function syncToggleButtons() {
+  setToggleButtonState(dom.toggleAuto, state.autoScroll);
+  setToggleButtonState(dom.toggleWrap, state.wrap);
+  setToggleButtonState(dom.toggleAlt, state.altRows);
+  setToggleButtonState(dom.togglePlain, state.showPlain);
+  setToggleButtonState(dom.toggleChannel, state.showChannel);
+  setToggleButtonState(dom.toggleDark, state.darkMode);
+  setToggleButtonState(dom.toggleTags, state.showTags);
+}
+
+function setToggleButtonState(button, isOn) {
+  if (!button) {
+    return;
+  }
+  button.dataset.state = isOn ? "on" : "off";
+  button.setAttribute("aria-pressed", isOn ? "true" : "false");
 }
 
 function loadStoredFilters() {
@@ -331,13 +415,21 @@ function persistFilters() {
 
 function setPaused(paused) {
   state.paused = paused;
-  dom.pauseBtn.textContent = paused ? "Resume" : "Pause";
+  const label = paused ? "Resume" : "Pause";
+  dom.pauseBtn.textContent = label;
+  if (dom.pauseBtnFloatLabel) {
+    dom.pauseBtnFloatLabel.textContent = label;
+  }
+  if (dom.pauseBtnFloat) {
+    dom.pauseBtnFloat.dataset.paused = paused ? "true" : "false";
+  }
   updateStatus();
   if (!paused) {
     state.newSincePause = 0;
     renderAll();
   }
   updateCounts();
+  updateBottomUI();
 }
 
 function loadConfig() {
@@ -386,8 +478,110 @@ function connectStream() {
   };
 }
 
+function recordLatency(entry) {
+  if (!state.debugLatency) {
+    return;
+  }
+  const sentMs = extractSentMs(entry);
+  if (!Number.isFinite(sentMs)) {
+    return;
+  }
+  const now = Date.now();
+  const latency = now - sentMs;
+  if (!Number.isFinite(latency)) {
+    return;
+  }
+  latencyStats.samples.push(latency);
+  if (latencyStats.samples.length > latencyStats.maxSamples) {
+    latencyStats.samples.shift();
+  }
+  if (now - latencyStats.lastUpdate < latencyStats.updateEveryMs) {
+    return;
+  }
+  latencyStats.lastUpdate = now;
+  updateLatencyMeta();
+}
+
+function updateLatencyMeta() {
+  const samples = latencyStats.samples.slice().sort((a, b) => a - b);
+  if (!samples.length) {
+    return;
+  }
+  const p50 = percentile(samples, 0.5);
+  const p95 = percentile(samples, 0.95);
+  const avg =
+    samples.reduce((total, value) => total + value, 0) / samples.length;
+  state.latencyMeta = `lag p50 ${formatMs(p50)} p95 ${formatMs(p95)} avg ${formatMs(avg)}`;
+  updateStatus();
+}
+
+function percentile(sorted, quantile) {
+  if (!sorted.length) {
+    return 0;
+  }
+  const index = Math.round((sorted.length - 1) * quantile);
+  return sorted[index];
+}
+
+function formatMs(value) {
+  if (!Number.isFinite(value)) {
+    return "n/a";
+  }
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(2)}s`;
+  }
+  return `${Math.round(value)}ms`;
+}
+
+function extractSentMs(entry) {
+  const direct = coerceTimestamp(entry.sentMs);
+  if (Number.isFinite(direct)) {
+    return normalizeEpochMs(direct);
+  }
+  const fields = entry.fields || {};
+  const candidates = [fields.sent_ms, fields.sentMs, fields.sent];
+  for (const candidate of candidates) {
+    const ts = coerceTimestamp(candidate);
+    if (Number.isFinite(ts)) {
+      return normalizeEpochMs(ts);
+    }
+  }
+  return null;
+}
+
+function coerceTimestamp(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+      return Number(trimmed);
+    }
+    const parsed = Date.parse(trimmed);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function normalizeEpochMs(value) {
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+  if (value > 0 && value < 1e11) {
+    return value * 1000;
+  }
+  return value;
+}
+
 function handleEntry(entry) {
   state.logs.push(entry);
+  recordLatency(entry);
   maybeAddChannelOption(entry);
   const extra = state.logs.length - state.clientMax;
   if (extra > 0) {
@@ -395,12 +589,20 @@ function handleEntry(entry) {
   }
 
   const matchesFilters = passesFilters(entry);
+  
   if (state.paused) {
     if (matchesFilters) {
       state.newSincePause += 1;
 
       console.log("New log while paused:", entry);
     }
+    updateCounts();
+    return;
+  }
+
+  // Skip expensive operations while user is typing
+  if (isUserTyping) {
+    state.newSincePause += 1;
     updateCounts();
     return;
   }
@@ -435,6 +637,7 @@ function trimOverflow(extra) {
   const beforeHeight = dom.logList.scrollHeight;
   const removed = state.logs.splice(0, extra);
   let removedVisible = 0;
+  let selectionChanged = false;
 
   for (const entry of removed) {
     const row = dom.logList.querySelector(`[data-id="${entry.id}"]`);
@@ -442,10 +645,28 @@ function trimOverflow(extra) {
       row.remove();
       removedVisible += 1;
     }
+    if (state.selectedIds.delete(entry.id)) {
+      selectionChanged = true;
+    }
+    if (state.selectedId === entry.id) {
+      state.selectedId = null;
+      selectionChanged = true;
+    }
+    if (state.anchorId === entry.id) {
+      state.anchorId = null;
+    }
   }
 
   if (removedVisible) {
     state.filteredCount = Math.max(0, state.filteredCount - removedVisible);
+  }
+
+  if (selectionChanged) {
+    updateRowSelectionUI();
+    updateExportButton();
+    if (!state.selectedId) {
+      clearDetailPanel();
+    }
   }
 
   if (!wasAtBottom) {
@@ -464,14 +685,17 @@ function renderAll() {
   state.filterKey = filterKey();
 
   const fragment = document.createDocumentFragment();
+  const visibleIds = [];
   for (const entry of state.logs) {
     if (passesFilters(entry)) {
       fragment.appendChild(buildRow(entry));
+      visibleIds.push(entry.id);
       state.filteredCount += 1;
     }
   }
 
   dom.logList.appendChild(fragment);
+  syncSelectionWithVisible(visibleIds);
   updateCounts();
   if (state.autoScroll && state.stickToBottom && !state.paused) {
     scrollToBottom();
@@ -677,7 +901,7 @@ function passesFilters(entry) {
     }
   }
 
-  if (state.minLevel !== "all") {
+  if (!isPlain && state.minLevel !== "all") {
     const minRank = levelRank[state.minLevel] || 0;
     const entryRank = levelRank[level] || 0;
     if (entryRank < minRank) {
@@ -685,7 +909,7 @@ function passesFilters(entry) {
     }
   }
 
-  if (state.maxLevel !== "all") {
+  if (!isPlain && state.maxLevel !== "all") {
     const maxRank = levelRank[state.maxLevel] || 0;
     const entryRank = levelRank[level] || 0;
     if (entryRank > maxRank) {
@@ -752,15 +976,9 @@ function clearDraftFilter(shouldRender = true) {
 }
 
 function scheduleDraftFilterUpdate(raw, expression) {
-  clearPendingFilterUpdate();
-  pendingFilterRaw = raw;
-  pendingFilterExpression = expression;
-  filterInputTimer = setTimeout(() => {
-    const nextRaw = pendingFilterRaw;
-    const nextExpression = pendingFilterExpression;
-    clearPendingFilterUpdate();
-    updateDraftFilter(nextRaw, nextExpression);
-  }, filterInputDelay);
+  state.draftFilterRaw = raw;
+  state.draftFilter = expression;
+  renderAll();
 }
 
 function clearPendingFilterUpdate() {
@@ -1302,8 +1520,11 @@ function buildRow(entry) {
   row.className = `log-row level-${level}`;
   row.dataset.id = entry.id;
   row.tabIndex = 0;
-  if (state.selectedId === entry.id) {
+  if (state.selectedIds.has(entry.id)) {
     row.classList.add("selected");
+  }
+  if (state.selectedId === entry.id) {
+    row.classList.add("active");
   }
 
   const timeCell = document.createElement("div");
@@ -1357,10 +1578,15 @@ function buildRow(entry) {
     }
   }
 
-  row.addEventListener("click", () => selectEntry(entry.id));
+  row.addEventListener("mousedown", (event) => {
+    if (event.shiftKey && event.button === 0) {
+      event.preventDefault();
+    }
+  });
+  row.addEventListener("click", (event) => handleRowClick(event, entry.id));
   row.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
-      selectEntry(entry.id);
+      handleRowClick(event, entry.id);
     }
   });
 
@@ -1704,21 +1930,193 @@ function isChannelSpecified(value) {
   return String(value).trim() !== "";
 }
 
+function handleRowClick(event, id) {
+  const isShift = Boolean(event.shiftKey);
+  const isToggle = Boolean(event.metaKey || event.ctrlKey);
+  const anchor = state.anchorId ?? state.selectedId ?? id;
+
+  if (isShift) {
+    const rangeIds = getRangeIds(anchor, id);
+    if (!rangeIds.length) {
+      setSingleSelection(id);
+      return;
+    }
+    if (isToggle) {
+      for (const rangeId of rangeIds) {
+        state.selectedIds.add(rangeId);
+      }
+    } else {
+      state.selectedIds.clear();
+      for (const rangeId of rangeIds) {
+        state.selectedIds.add(rangeId);
+      }
+    }
+    if (state.anchorId === null) {
+      state.anchorId = anchor;
+    }
+    state.selectedId = id;
+    state.selectedIds.add(id);
+    updateRowSelectionUI();
+    selectEntry(id);
+    updateExportButton();
+    return;
+  }
+
+  if (!isToggle) {
+    setSingleSelection(id);
+    return;
+  }
+
+  state.selectedIds.add(id);
+  state.selectedId = id;
+  state.anchorId = id;
+  updateRowSelectionUI();
+  selectEntry(id);
+  updateExportButton();
+}
+
+function setSingleSelection(id) {
+  state.selectedIds.clear();
+  state.selectedIds.add(id);
+  state.selectedId = id;
+  state.anchorId = id;
+  updateRowSelectionUI();
+  selectEntry(id);
+  updateExportButton();
+}
+
+function getVisibleRowIds() {
+  const rows = Array.from(dom.logList.querySelectorAll(".log-row"));
+  const ids = [];
+  for (const row of rows) {
+    const id = Number(row.dataset.id);
+    if (Number.isFinite(id)) {
+      ids.push(id);
+    }
+  }
+  return ids;
+}
+
+function getRangeIds(anchorId, targetId) {
+  const ids = getVisibleRowIds();
+  const anchorIndex = ids.indexOf(anchorId);
+  const targetIndex = ids.indexOf(targetId);
+  if (anchorIndex === -1 || targetIndex === -1) {
+    return [];
+  }
+  const start = Math.min(anchorIndex, targetIndex);
+  const end = Math.max(anchorIndex, targetIndex);
+  return ids.slice(start, end + 1);
+}
+
+function updateRowSelectionUI() {
+  const rows = Array.from(dom.logList.querySelectorAll(".log-row"));
+  for (const row of rows) {
+    const id = Number(row.dataset.id);
+    if (!Number.isFinite(id)) {
+      continue;
+    }
+    row.classList.toggle("selected", state.selectedIds.has(id));
+    row.classList.toggle("active", state.selectedId === id);
+  }
+}
+
+function syncSelectionWithVisible(visibleIds) {
+  const visibleSet = new Set(visibleIds);
+  let changed = false;
+
+  for (const id of Array.from(state.selectedIds)) {
+    if (!visibleSet.has(id)) {
+      state.selectedIds.delete(id);
+      changed = true;
+    }
+  }
+
+  if (state.selectedId !== null && !visibleSet.has(state.selectedId)) {
+    state.selectedId = null;
+    changed = true;
+  }
+
+  if (state.anchorId !== null && !visibleSet.has(state.anchorId)) {
+    state.anchorId = null;
+  }
+
+  if (changed) {
+    updateRowSelectionUI();
+    if (!state.selectedId) {
+      clearDetailPanel();
+    }
+  }
+  updateExportButton();
+}
+
+function updateExportButton() {
+  const isDisabled = state.selectedIds.size === 0;
+  if (dom.exportBtn) {
+    dom.exportBtn.disabled = isDisabled;
+  }
+  if (dom.exportBtnFloat) {
+    dom.exportBtnFloat.disabled = isDisabled;
+  }
+}
+
+function exportSelected() {
+  if (!state.selectedIds.size) {
+    return;
+  }
+  const ids = getVisibleRowIds();
+  const lines = [];
+  for (const id of ids) {
+    if (!state.selectedIds.has(id)) {
+      continue;
+    }
+    const entry = state.logs.find((log) => log.id === id);
+    if (!entry) {
+      continue;
+    }
+    lines.push(formatExportLine(entry));
+  }
+  if (!lines.length) {
+    return;
+  }
+  const content = `${lines.join("\n")}\n`;
+  const blob = new Blob([content], { type: "application/jsonl" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = exportFilename();
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function formatExportLine(entry) {
+  if (isPlainEntry(entry)) {
+    return String(entry.raw || "");
+  }
+  if (typeof entry.raw === "string" && entry.raw.trim() !== "") {
+    return entry.raw;
+  }
+  return JSON.stringify(entry.fields || {});
+}
+
+function exportFilename() {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return `zlog-export-${stamp}.jsonl`;
+}
+
+function isPlainEntry(entry) {
+  const level = normalizeLevel(entry.level);
+  return level === "plain" || Boolean(entry.parseError);
+}
+
 function selectEntry(id) {
   state.selectedId = id;
   const entry = state.logs.find((log) => log.id === id);
   if (!entry) {
+    clearDetailPanel();
     return;
-  }
-
-  const previous = dom.logList.querySelector(".log-row.selected");
-  if (previous) {
-    previous.classList.remove("selected");
-  }
-
-  const row = dom.logList.querySelector(`[data-id="${id}"]`);
-  if (row) {
-    row.classList.add("selected");
   }
 
   dom.shell.classList.add("detail-open");
@@ -1736,13 +2134,17 @@ function selectEntry(id) {
 
 function clearSelection() {
   state.selectedId = null;
+  state.selectedIds.clear();
+  state.anchorId = null;
+  updateRowSelectionUI();
+  updateExportButton();
+  clearDetailPanel();
+}
+
+function clearDetailPanel() {
   dom.shell.classList.remove("detail-open");
   if (dom.detailPanel) {
     dom.detailPanel.classList.add("empty");
-  }
-  const previous = dom.logList.querySelector(".log-row.selected");
-  if (previous) {
-    previous.classList.remove("selected");
   }
   dom.detailLevel.textContent = "-";
   dom.detailTime.textContent = "-";
@@ -1808,6 +2210,9 @@ function normalizeLevel(level) {
 }
 
 function updateCounts() {
+  if (isUserTyping) {
+    return; // Skip updates while typing to prevent layout thrashing
+  }
   dom.countTotal.textContent = state.logs.length;
   dom.countFiltered.textContent = state.filteredCount;
   dom.newCount.textContent = state.newSincePause;
@@ -1819,6 +2224,9 @@ function scrollToBottom() {
 }
 
 function isAtBottom() {
+  if (isUserTyping) {
+    return state.stickToBottom; // Use cached value during typing
+  }
   const threshold = 6;
   const { scrollTop, scrollHeight, clientHeight } = dom.logList;
   return scrollHeight - scrollTop - clientHeight <= threshold;
@@ -1835,11 +2243,20 @@ function setStickToBottom(atBottom) {
 
 function updateBottomUI(forceAtBottom) {
   const atBottom = typeof forceAtBottom === "boolean" ? forceAtBottom : isAtBottom();
-  if (dom.bottomIndicator) {
-    dom.bottomIndicator.textContent = atBottom ? "at bottom" : "scrolled";
-    dom.bottomIndicator.classList.toggle("is-link", !atBottom);
-    dom.bottomIndicator.disabled = atBottom;
-    setStatusClass(dom.bottomIndicator, atBottom ? "status-green" : "status-orange");
+  const showButton = !atBottom;
+  if (dom.scrollBottomBtn) {
+    dom.scrollBottomBtn.tabIndex = showButton ? 0 : -1;
+    dom.scrollBottomBtn.setAttribute("aria-hidden", showButton ? "false" : "true");
+    if (!showButton && document.activeElement === dom.scrollBottomBtn) {
+      dom.scrollBottomBtn.blur();
+    }
+  }
+  if (dom.logPanel) {
+    dom.logPanel.classList.toggle("show-scroll-button", showButton);
+    dom.logPanel.classList.toggle(
+      "auto-scroll-active",
+      state.autoScroll && atBottom,
+    );
   }
 }
 
@@ -1911,7 +2328,7 @@ function selectRelative(delta) {
     return;
   }
 
-  selectEntry(id);
+  setSingleSelection(id);
   row.scrollIntoView({ block: "nearest" });
   setStickToBottom(isAtBottom());
 }
@@ -1938,6 +2355,9 @@ function updateStatus(text, meta) {
     parts.push("paused");
   } else if (state.statusMeta) {
     parts.push(state.statusMeta);
+  }
+  if (state.latencyMeta) {
+    parts.push(state.latencyMeta);
   }
 
   dom.statusText.textContent = parts.join(" ").trim();

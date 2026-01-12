@@ -27,6 +27,7 @@ type LogEntry struct {
 	ID         int64                  `json:"id"`
 	Time       string                 `json:"time,omitempty"`
 	Ingested   string                 `json:"ingested"`
+	SentMs     int64                  `json:"sentMs,omitempty"`
 	Level      string                 `json:"level"`
 	LevelNum   int                    `json:"levelNum,omitempty"`
 	Msg        string                 `json:"msg"`
@@ -143,6 +144,7 @@ func main() {
 	host := flag.String("host", "127.0.0.1", "Host to bind")
 	port := flag.Int("port", defaultPort, "Port to bind")
 	maxEntries := flag.Int("max", defaultMaxEntries, "Max log entries to keep in memory")
+	debugLatency := flag.Bool("debug-latency", false, "Include sentMs in SSE payloads")
 	flag.Parse()
 
 	store := NewLogStore(*maxEntries)
@@ -150,7 +152,7 @@ func main() {
 	go hub.Run()
 
 	go func() {
-		if err := readStdin(store, hub); err != nil {
+		if err := readStdin(store, hub, *debugLatency); err != nil {
 			log.Printf("stdin read error: %v", err)
 		}
 	}()
@@ -171,13 +173,17 @@ func main() {
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 
 	addr := net.JoinHostPort(*host, strconv.Itoa(*port))
-	fmt.Printf("Server running on http://%s:%d\n", displayHost(*host), *port)
+	displayAddr := fmt.Sprintf("http://%s:%d", displayHost(*host), *port)
+	if *debugLatency {
+		displayAddr = displayAddr + "/?latency=1"
+	}
+	fmt.Printf("Server running on %s\n", displayAddr)
 	if err := http.ListenAndServe(addr, mux); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
 	}
 }
 
-func readStdin(store *LogStore, hub *Hub) error {
+func readStdin(store *LogStore, hub *Hub, includeSentMs bool) error {
 	scanner := bufio.NewScanner(os.Stdin)
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, maxScanTokenSize)
@@ -196,6 +202,9 @@ func readStdin(store *LogStore, hub *Hub) error {
 			entry = parseLine(line)
 		}
 		entry = store.Add(entry)
+		if includeSentMs {
+			entry.SentMs = time.Now().UnixMilli()
+		}
 		payload, err := json.Marshal(entry)
 		if err != nil {
 			continue

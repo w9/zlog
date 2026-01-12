@@ -16,6 +16,100 @@
       </div>
       <header class="topbar">
         <div class="toolbar-row">
+          <div class="toggles">
+            <button
+              id="toggleAuto"
+              class="toggle-btn"
+              type="button"
+              aria-pressed="true"
+              data-state="on"
+            >
+              <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M11,6V14L7.5,10.5L6.08,11.92L12,17.84L17.92,11.92L16.5,10.5L13,14V6H11M12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22Z"
+                />
+              </svg>
+              <span>Auto-scroll</span>
+            </button>
+            <button
+              id="toggleWrap"
+              class="toggle-btn"
+              type="button"
+              aria-pressed="false"
+              data-state="off"
+            >
+              <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M7,21H5V3H7V21M19,3H17V21H19V3M13,8H9V10H12.97C13.14,10 14,10.16 14,12C14,13.84 13.14,14 13,14H11V12L8,15L11,18V16H13C14.04,16 16,15.16 16,12C16,8.84 14.04,8 13,8Z"
+                />
+              </svg>
+              <span>Wrap lines</span>
+            </button>
+            <button
+              id="toggleAlt"
+              class="toggle-btn"
+              type="button"
+              aria-pressed="false"
+              data-state="off"
+            >
+              <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 5H21V9H3V5M3 10H21V14H3V10M3 15H21V19H3V15Z" />
+              </svg>
+              <span>Alternate rows</span>
+            </button>
+            <button
+              id="togglePlain"
+              class="toggle-btn"
+              type="button"
+              aria-pressed="true"
+              data-state="on"
+            >
+              <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4,9H20V11H4V9M4,13H14V15H4V13Z" />
+              </svg>
+              <span>Show plain</span>
+            </button>
+            <button
+              id="toggleChannel"
+              class="toggle-btn"
+              type="button"
+              aria-pressed="false"
+              data-state="off"
+            >
+              <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M16,5V18H21V5M4,18H9V5H4M10,18H15V5H10V18Z" />
+              </svg>
+              <span>Show channel column</span>
+            </button>
+            <button
+              id="toggleDark"
+              class="toggle-btn"
+              type="button"
+              aria-pressed="false"
+              data-state="off"
+            >
+              <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M17.75,4.09L15.22,6.03L16.13,9.09L13.5,7.28L10.87,9.09L11.78,6.03L9.25,4.09L12.44,4L13.5,1L14.56,4L17.75,4.09M21.25,11L19.61,12.25L20.2,14.23L18.5,13.06L16.8,14.23L17.39,12.25L15.75,11L17.81,10.95L18.5,9L19.19,10.95L21.25,11M18.97,15.95C19.8,15.87 20.69,17.05 20.16,17.8C19.84,18.25 19.5,18.67 19.08,19.07C15.17,23 8.84,23 4.94,19.07C1.03,15.17 1.03,8.83 4.94,4.93C5.34,4.53 5.76,4.17 6.21,3.85C6.96,3.32 8.14,4.21 8.06,5.04C7.79,7.9 8.75,10.87 10.95,13.06C13.14,15.26 16.1,16.22 18.97,15.95M17.33,17.97C14.5,17.81 11.7,16.64 9.53,14.5C7.36,12.31 6.2,9.5 6.04,6.68C3.23,9.82 3.34,14.64 6.35,17.66C9.37,20.67 14.19,20.78 17.33,17.97Z"
+                />
+              </svg>
+              <span>Dark mode</span>
+            </button>
+            <button
+              id="toggleTags"
+              class="toggle-btn"
+              type="button"
+              aria-pressed="false"
+              data-state="off"
+            >
+              <svg class="toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M6.5 10C7.3 10 8 9.3 8 8.5S7.3 7 6.5 7 5 7.7 5 8.5 5.7 10 6.5 10M9 6L16 13L11 18L4 11V6H9M9 4H4C2.9 4 2 4.9 2 6V11C2 11.6 2.2 12.1 2.6 12.4L9.6 19.4C9.9 19.8 10.4 20 11 20S12.1 19.8 12.4 19.4L17.4 14.4C17.8 14 18 13.5 18 13C18 12.4 17.8 11.9 17.4 11.6L10.4 4.6C10.1 4.2 9.6 4 9 4M13.5 5.7L14.5 4.7L21.4 11.6C21.8 12 22 12.5 22 13S21.8 14.1 21.4 14.4L16 19.8L15 18.8L20.7 13L13.5 5.7Z"
+                />
+              </svg>
+              <span>Show custom fields as tags</span>
+            </button>
+          </div>
           <div class="toolbar">
             <div class="control">
               <label class="field-label" for="levelMinRange">Level range</label>
@@ -52,45 +146,16 @@
               <div class="button-group" id="channelButtons" role="group" aria-label="Channel filters"></div>
             </div>
           </div>
-          <div class="toggles">
-            <label class="toggle">
-              <input id="toggleAuto" type="checkbox" checked />
-              Auto-scroll
-            </label>
-            <label class="toggle">
-              <input id="toggleWrap" type="checkbox" />
-              Wrap lines
-            </label>
-            <label class="toggle">
-              <input id="toggleAlt" type="checkbox" />
-              Alternate rows
-            </label>
-            <label class="toggle">
-              <input id="togglePlain" type="checkbox" checked />
-              Show plain
-            </label>
-            <label class="toggle">
-              <input id="toggleChannel" type="checkbox" />
-              Show channel column
-            </label>
-            <label class="toggle">
-              <input id="toggleDark" type="checkbox" />
-              Dark mode
-            </label>
-            <label class="toggle">
-              <input id="toggleTags" type="checkbox" />
-              Show custom fields as tags
-            </label>
-          </div>
           <div class="actions">
             <button id="pauseBtn" class="btn">Pause</button>
+            <button id="exportBtn" class="btn ghost">Export</button>
             <button id="clearBtn" class="btn ghost">Clear</button>
           </div>
         </div>
       </header>
 
       <main class="layout">
-        <section class="log-panel">
+        <section class="log-panel" id="logPanel">
           <div class="panel-header">
             <div class="panel-title">Logs</div>
             <div class="log-filters" id="logFilters">
@@ -107,13 +172,12 @@
                   ?
                   <span class="filter-help-tooltip" role="tooltip">
                     <span class="filter-help-title">Examples</span>
-                    <span class="filter-help-row"><code>timeout</code> (message contains)</span>
+                    <span class="filter-help-row"><code>abc</code> (search in message)</span>
                     <span class="filter-help-row"><code>/^aws/i</code> (regex)</span>
-                    <span class="filter-help-row"><code>.level == "error"</code></span>
-                    <span class="filter-help-row"><code>.channel == "action"</code></span>
+                    <span class="filter-help-row"><code>.hostname == "myhost"</code></span>
                     <span class="filter-help-row"><code>.session</code> (field exists)</span>
                     <span class="filter-help-row"><code>.duration >= 120</code></span>
-                    <span class="filter-help-row"><code>.message contains "timeout"</code></span>
+                    <span class="filter-help-row"><code>.term contains "list"</code></span>
                     <span class="filter-help-row"><code>.tags[0] == "api"</code></span>
                   </span>
                 </span>
@@ -121,6 +185,15 @@
             </div>
           </div>
           <div class="log-list" id="logList"></div>
+          <button
+            id="scrollBottomBtn"
+            class="scroll-bottom-btn"
+            type="button"
+            aria-hidden="true"
+            tabindex="-1"
+          >
+            Scroll to bottom
+          </button>
         </section>
 
         <aside class="detail-panel empty">
@@ -206,8 +279,6 @@
             <span id="newCount">0</span> new
           </div>
           <div class="status-line">
-            <button id="bottomIndicator" class="status-item status-button" type="button">at bottom</button>
-            <span class="sep">|</span>
             <span class="status-item" id="statusText">connecting</span>
           </div>
         </div>
