@@ -64,6 +64,7 @@ let pendingFilterRaw = "";
 let pendingFilterExpression = null;
 let isUserTyping = false;
 const filterStorageKey = "zlog-filters";
+const prefsStorageKey = "zlog-prefs";
 const latencyStats = {
   samples: [],
   maxSamples: 200,
@@ -76,6 +77,7 @@ function init() {
   initLevelRange();
   initTheme();
   initLatencyDebug();
+  loadStoredPreferences();
   loadStoredFilters();
   syncToggleButtons();
   bindEvents();
@@ -188,6 +190,7 @@ function bindEvents() {
     }
     renderChannelOptions();
     renderAll();
+    persistPreferences();
   });
 
   dom.filterInput.addEventListener("keydown", (event) => {
@@ -214,24 +217,28 @@ function bindEvents() {
       scrollToBottom();
     }
     updateBottomUI();
+    persistPreferences();
   });
 
   dom.toggleWrap.addEventListener("click", () => {
     state.wrap = !state.wrap;
     setToggleButtonState(dom.toggleWrap, state.wrap);
     dom.logList.classList.toggle("wrap", state.wrap);
+    persistPreferences();
   });
 
   dom.toggleAlt.addEventListener("click", () => {
     state.altRows = !state.altRows;
     setToggleButtonState(dom.toggleAlt, state.altRows);
     dom.logList.classList.toggle("alt", state.altRows);
+    persistPreferences();
   });
 
   dom.togglePlain.addEventListener("click", () => {
     state.showPlain = !state.showPlain;
     setToggleButtonState(dom.togglePlain, state.showPlain);
     renderAll();
+    persistPreferences();
   });
 
   dom.toggleChannel.addEventListener("click", () => {
@@ -239,6 +246,7 @@ function bindEvents() {
     setToggleButtonState(dom.toggleChannel, state.showChannel);
     dom.logList.classList.toggle("channel-on", state.showChannel);
     renderAll();
+    persistPreferences();
   });
 
   dom.toggleDark.addEventListener("click", () => {
@@ -250,6 +258,7 @@ function bindEvents() {
     setToggleButtonState(dom.toggleTags, state.showTags);
     dom.logList.classList.toggle("tags-on", state.showTags);
     renderAll();
+    persistPreferences();
   });
 
   const handlePause = () => {
@@ -398,6 +407,82 @@ function loadStoredFilters() {
     });
   }
   state.filters = nextFilters;
+}
+
+function loadStoredPreferences() {
+  let stored = "";
+  try {
+    stored = localStorage.getItem(prefsStorageKey) || "";
+  } catch (err) {
+    return;
+  }
+  if (!stored) {
+    return;
+  }
+  let prefs;
+  try {
+    prefs = JSON.parse(stored);
+  } catch (err) {
+    return;
+  }
+  if (typeof prefs !== "object" || prefs === null) {
+    return;
+  }
+  
+  // Restore boolean preferences
+  if (typeof prefs.autoScroll === "boolean") state.autoScroll = prefs.autoScroll;
+  if (typeof prefs.wrap === "boolean") state.wrap = prefs.wrap;
+  if (typeof prefs.altRows === "boolean") state.altRows = prefs.altRows;
+  if (typeof prefs.showPlain === "boolean") state.showPlain = prefs.showPlain;
+  if (typeof prefs.showChannel === "boolean") state.showChannel = prefs.showChannel;
+  if (typeof prefs.showTags === "boolean") state.showTags = prefs.showTags;
+  
+  // Restore level range
+  if (typeof prefs.minLevel === "string") state.minLevel = prefs.minLevel;
+  if (typeof prefs.maxLevel === "string") state.maxLevel = prefs.maxLevel;
+  
+  // Restore selected channels
+  if (Array.isArray(prefs.selectedChannels)) {
+    state.selectedChannels = new Set(prefs.selectedChannels);
+  }
+  
+  // Apply CSS classes based on loaded preferences
+  if (dom.logList) {
+    dom.logList.classList.toggle("wrap", state.wrap);
+    dom.logList.classList.toggle("alt", state.altRows);
+    dom.logList.classList.toggle("tags-on", state.showTags);
+    dom.logList.classList.toggle("channel-on", state.showChannel);
+  }
+  
+  // Restore level range UI
+  if (dom.levelMinRange && dom.levelMaxRange && state.minLevel !== "all" && state.maxLevel !== "all") {
+    const minIndex = levelOrder.indexOf(state.minLevel);
+    const maxIndex = levelOrder.indexOf(state.maxLevel);
+    if (minIndex >= 0 && maxIndex >= 0) {
+      dom.levelMinRange.value = String(minIndex);
+      dom.levelMaxRange.value = String(maxIndex);
+      updateLevelRangeUI(minIndex, maxIndex);
+    }
+  }
+}
+
+function persistPreferences() {
+  try {
+    const prefs = {
+      autoScroll: state.autoScroll,
+      wrap: state.wrap,
+      altRows: state.altRows,
+      showPlain: state.showPlain,
+      showChannel: state.showChannel,
+      showTags: state.showTags,
+      minLevel: state.minLevel,
+      maxLevel: state.maxLevel,
+      selectedChannels: Array.from(state.selectedChannels),
+    };
+    localStorage.setItem(prefsStorageKey, JSON.stringify(prefs));
+  } catch (err) {
+    // Ignore storage failures.
+  }
 }
 
 function persistFilters() {
@@ -753,6 +838,7 @@ function handleLevelRangeInput(active, commit) {
   updateLevelRangeUI(minIndex, maxIndex);
   if (commit && updateLevelRangeState(minIndex, maxIndex)) {
     renderAll();
+    persistPreferences();
   }
 }
 

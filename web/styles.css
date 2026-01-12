@@ -211,6 +211,12 @@ body::after {
   gap: 12px;
 }
 
+@media (max-width: 1200px) {
+  .toolbar {
+    flex-basis: 100%;
+  }
+}
+
 .control {
   display: flex;
   align-items: center;
