@@ -292,7 +292,7 @@ function bindEvents() {
 
   dom.logList.addEventListener("scroll", () => {
     if (isUserTyping) {
-      return; // Skip all scroll handling during typing
+      return;
     }
     clearTimeout(scrollUpdateTimer);
     scrollUpdateTimer = setTimeout(() => {
@@ -2225,7 +2225,7 @@ function scrollToBottom() {
 
 function isAtBottom() {
   if (isUserTyping) {
-    return state.stickToBottom; // Use cached value during typing
+    return state.stickToBottom;
   }
   const threshold = 6;
   const { scrollTop, scrollHeight, clientHeight } = dom.logList;

@@ -504,6 +504,7 @@ body::after {
 
 .log-panel {
   position: relative;
+  contain: layout style;
 }
 
 .log-panel.auto-scroll-active {
@@ -520,6 +521,7 @@ body::after {
   border-bottom: 1px solid var(--border);
   background: var(--panel-soft);
   min-height: 40px;
+  contain: layout style; /* Isolate from log list below (Edge fix) */
 }
 
 .panel-title {
@@ -538,6 +540,7 @@ body::after {
   margin-left: auto;
   font-family: var(--font-mono);
   font-size: 0.6rem;
+  contain: layout; /* Fix Edge flexbox recalculation bug */
 }
 
 .filter-tag {
@@ -840,6 +843,7 @@ body::after {
   display: flex;
   flex-direction: column;
   gap: 0;
+  contain: strict;
 }
 
 .scroll-bottom-btn {
