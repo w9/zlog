@@ -21,26 +21,57 @@ When debugging services that output structured JSON logs (kubernetes pods, Docke
 
 ## Installation
 
-**Homebrew (macOS/Linux):**
+### Homebrew (macOS/Linux)
 ```bash
 brew install w9/zlog/zlog
 ```
 
-**Go:**
+### Go Install
 ```bash
 go install github.com/w9/zlog@latest
 ```
 
-**From Source:**
+### Pre-built Binaries
+
+Download from [GitHub Releases](https://github.com/w9/zlog/releases/latest):
+
+**Linux:**
+```bash
+# AMD64
+curl -L https://github.com/w9/zlog/releases/download/v0.1.0/zlog-linux-amd64 -o zlog
+chmod +x zlog
+sudo mv zlog /usr/local/bin/
+
+# ARM64
+curl -L https://github.com/w9/zlog/releases/download/v0.1.0/zlog-linux-arm64 -o zlog
+chmod +x zlog
+sudo mv zlog /usr/local/bin/
+```
+
+**macOS:**
+```bash
+# Intel
+curl -L https://github.com/w9/zlog/releases/download/v0.1.0/zlog-darwin-amd64 -o zlog
+chmod +x zlog
+sudo mv zlog /usr/local/bin/
+
+# Apple Silicon
+curl -L https://github.com/w9/zlog/releases/download/v0.1.0/zlog-darwin-arm64 -o zlog
+chmod +x zlog
+sudo mv zlog /usr/local/bin/
+```
+
+**Windows:**
+
+Download [zlog-windows-amd64.exe](https://github.com/w9/zlog/releases/download/v0.1.0/zlog-windows-amd64.exe) or [zlog-windows-arm64.exe](https://github.com/w9/zlog/releases/download/v0.1.0/zlog-windows-arm64.exe) and add to your PATH.
+
+### From Source
 ```bash
 git clone https://github.com/w9/zlog.git
 cd zlog
 go build -o zlog
+sudo mv zlog /usr/local/bin/  # Optional: install globally
 ```
-
-**Pre-built Binaries:**
-
-Download from [GitHub Releases](https://github.com/w9/zlog/releases/latest) for Linux, macOS, and Windows (AMD64/ARM64).
 
 ## Quick Start
 
