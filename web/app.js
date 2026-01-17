@@ -55,11 +55,16 @@ const state = {
   channelOptions: new Set(),
   hasUnspecifiedChannel: false,
   selectedChannels: new Set(),
+  groupState: {
+    lastJsonTimestampMs: null,
+    hasGroup: false,
+  },
 };
 
 const dom = {};
 const statusClassNames = ["status-green", "status-orange", "status-red", "status-blue"];
 const filterInputDelay = 150;
+const groupGapMs = 5 * 60 * 1000;
 let filterInputTimer = null;
 let mapInputTimer = null;
 let pendingFilterRaw = "";
@@ -763,8 +768,7 @@ function handleEntry(entry) {
 
   if (matchesFilters) {
     const shouldStick = state.autoScroll && state.stickToBottom;
-    const row = buildRow(entry);
-    dom.logList.appendChild(row);
+    appendEntryWithGroup(entry, state.groupState);
     state.filteredCount += 1;
     if (shouldStick) {
       scrollToBottom();
@@ -807,6 +811,8 @@ function trimOverflow(extra) {
 
   if (removedVisible) {
     state.filteredCount = Math.max(0, state.filteredCount - removedVisible);
+    renderAll();
+    return;
   }
 
   if (selectionChanged) {
@@ -834,13 +840,15 @@ function renderAll() {
 
   const fragment = document.createDocumentFragment();
   const visibleIds = [];
+  const groupState = { lastJsonTimestampMs: null, hasGroup: false };
   for (const entry of state.logs) {
     if (passesFilters(entry)) {
-      fragment.appendChild(buildRow(entry));
+      appendEntryWithGroup(entry, groupState, fragment);
       visibleIds.push(entry.id);
       state.filteredCount += 1;
     }
   }
+  state.groupState = groupState;
 
   dom.logList.appendChild(fragment);
   syncSelectionWithVisible(visibleIds);
@@ -849,6 +857,71 @@ function renderAll() {
     scrollToBottom();
   }
   setStickToBottom(isAtBottom());
+}
+
+function appendEntryWithGroup(entry, groupState, target = dom.logList) {
+  const isPlain = isPlainEntry(entry);
+  if (isPlain) {
+    if (!groupState.hasGroup) {
+      target.appendChild(buildGroupHeader("No timestamp"));
+      groupState.hasGroup = true;
+    }
+  } else {
+    const timestampMs = getEntryTimestampMs(entry);
+    const shouldStartGroup =
+      !groupState.hasGroup ||
+      groupState.lastJsonTimestampMs === null ||
+      (timestampMs !== null &&
+        groupState.lastJsonTimestampMs !== null &&
+        timestampMs - groupState.lastJsonTimestampMs >= groupGapMs);
+    if (shouldStartGroup) {
+      target.appendChild(buildGroupHeader(formatGroupLabel(entry)));
+      groupState.hasGroup = true;
+    }
+    if (timestampMs !== null) {
+      groupState.lastJsonTimestampMs = timestampMs;
+    }
+  }
+  target.appendChild(buildRow(entry));
+}
+
+function buildGroupHeader(label) {
+  const header = document.createElement("div");
+  header.className = "log-group";
+  header.textContent = label;
+  return header;
+}
+
+function formatGroupLabel(entry) {
+  return entry.time || entry.ingested || "No timestamp";
+}
+
+function getEntryTimestampMs(entry) {
+  if (isPlainEntry(entry)) {
+    return null;
+  }
+  const raw = entry.time || entry.ingested || "";
+  return parseLogTimestamp(raw);
+}
+
+function parseLogTimestamp(raw) {
+  if (!raw) {
+    return null;
+  }
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/.exec(raw);
+  if (match) {
+    const year = Number(match[1]);
+    const month = Number(match[2]) - 1;
+    const day = Number(match[3]);
+    const hour = Number(match[4]);
+    const minute = Number(match[5]);
+    const second = Number(match[6]);
+    const ms = Number((match[7] || "0").padEnd(3, "0"));
+    return new Date(year, month, day, hour, minute, second, ms).getTime();
+  }
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function filterKey() {
@@ -1812,13 +1885,6 @@ function buildRow(entry) {
     row.classList.add("active");
   }
 
-  const timeCell = document.createElement("div");
-  timeCell.className = "cell";
-  const timeText = document.createElement("div");
-  timeText.className = "time";
-  timeText.textContent = entry.time || entry.ingested || "";
-  timeCell.appendChild(timeText);
-
   const levelCell = document.createElement("div");
   levelCell.className = "cell";
   const levelText = document.createElement("div");
@@ -1828,9 +1894,7 @@ function buildRow(entry) {
 
   const mappedValues = formatMappedValues(entry);
   const mapCellCount = Math.max(1, mappedValues.length);
-  const baseColumns = state.showChannel
-    ? "140px 30px 60px"
-    : "140px 30px";
+  const baseColumns = state.showChannel ? "30px 60px" : "30px";
   row.style.gridTemplateColumns = `${baseColumns} ${"minmax(0, 1fr) ".repeat(mapCellCount).trim()}`;
   const messageCells = mappedValues.length ? mappedValues : [""];
   const msgCells = messageCells.map((value) => {
@@ -1854,9 +1918,9 @@ function buildRow(entry) {
   }
 
   if (channelCell) {
-    row.append(timeCell, levelCell, channelCell, ...msgCells);
+    row.append(levelCell, channelCell, ...msgCells);
   } else {
-    row.append(timeCell, levelCell, ...msgCells);
+    row.append(levelCell, ...msgCells);
   }
 
   row.addEventListener("mousedown", (event) => {

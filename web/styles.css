@@ -1040,17 +1040,13 @@ body::after {
 
 .log-row {
   display: grid;
-  grid-template-columns: 140px 30px minmax(0, 1fr);
+  grid-template-columns: 30px minmax(0, 1fr);
   gap: 6px;
   padding: 1px 6px;
   border-radius: 4px;
   background: transparent;
   cursor: pointer;
   outline: 1px solid transparent;
-}
-
-.log-list.channel-on .log-row {
-  grid-template-columns: 140px 30px 60px minmax(0, 1fr);
 }
 
 
@@ -1118,7 +1114,6 @@ body::after {
   color: var(--plain-row-ink);
 }
 
-.log-row.level-plain .time,
 .log-row.level-plain .channel {
   color: var(--plain-row-ink);
 }
@@ -1127,6 +1122,15 @@ body::after {
   display: flex;
   align-items: center;
   min-width: 0;
+}
+
+.log-group {
+  margin: 8px 0 2px;
+  padding: 4px 8px 0;
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .message-cell {
