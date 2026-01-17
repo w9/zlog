@@ -38,12 +38,12 @@ Download from [GitHub Releases](https://github.com/w9/zlog/releases/latest):
 **Linux:**
 ```bash
 # AMD64
-curl -L https://github.com/w9/zlog/releases/download/v0.1.0/zlog-linux-amd64 -o zlog
+curl -L https://github.com/w9/zlog/releases/download/v0.2/zlog-linux-amd64 -o zlog
 chmod +x zlog
 sudo mv zlog /usr/local/bin/
 
 # ARM64
-curl -L https://github.com/w9/zlog/releases/download/v0.1.0/zlog-linux-arm64 -o zlog
+curl -L https://github.com/w9/zlog/releases/download/v0.2/zlog-linux-arm64 -o zlog
 chmod +x zlog
 sudo mv zlog /usr/local/bin/
 ```
@@ -51,19 +51,19 @@ sudo mv zlog /usr/local/bin/
 **macOS:**
 ```bash
 # Intel
-curl -L https://github.com/w9/zlog/releases/download/v0.1.0/zlog-darwin-amd64 -o zlog
+curl -L https://github.com/w9/zlog/releases/download/v0.2/zlog-darwin-amd64 -o zlog
 chmod +x zlog
 sudo mv zlog /usr/local/bin/
 
 # Apple Silicon
-curl -L https://github.com/w9/zlog/releases/download/v0.1.0/zlog-darwin-arm64 -o zlog
+curl -L https://github.com/w9/zlog/releases/download/v0.2/zlog-darwin-arm64 -o zlog
 chmod +x zlog
 sudo mv zlog /usr/local/bin/
 ```
 
 **Windows:**
 
-Download [zlog-windows-amd64.exe](https://github.com/w9/zlog/releases/download/v0.1.0/zlog-windows-amd64.exe) or [zlog-windows-arm64.exe](https://github.com/w9/zlog/releases/download/v0.1.0/zlog-windows-arm64.exe) and add to your PATH.
+Download [zlog-windows-amd64.exe](https://github.com/w9/zlog/releases/download/v0.2/zlog-windows-amd64.exe) or [zlog-windows-arm64.exe](https://github.com/w9/zlog/releases/download/v0.2/zlog-windows-arm64.exe) and add to your PATH.
 
 ### From Source
 ```bash
