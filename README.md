@@ -106,11 +106,13 @@ Simulate a live stream with variable delays:
 
 ## Command-Line Flags
 
-| Flag     | Default       | Description                                    |
-|----------|---------------|------------------------------------------------|
-| `--host` | `127.0.0.1`   | Server bind address                            |
-| `--port` | `8037`        | HTTP port                                      |
-| `--max`  | `10000`       | Maximum log entries kept in memory (ring buffer) |
+| Flag        | Default       | Description                                       |
+|-------------|---------------|---------------------------------------------------|
+| `--host`    | `127.0.0.1`   | Server bind address                               |
+| `--port`    | `8037`        | HTTP port                                         |
+| `--max`     | `10000`       | Maximum log entries kept in memory (ring buffer)  |
+| `--filter`  | _none_        | Add a filter expression (repeatable)              |
+| `--channel` | _none_        | Shorthand for `.channel = <value>` (repeatable)   |
 
 ## Filter Syntax
 
@@ -139,7 +141,7 @@ error connecting
 .tags[0] == "critical"             # array index
 ```
 
-**Supported Operators**: `==`, `!=`, `<`, `>`, `<=`, `>=`, `contains`, `startswith`, `endswith`
+**Supported Operators**: `=`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `contains`, `startswith`, `endswith`
 
 ## User Interface
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net"
@@ -34,6 +35,17 @@ type LogEntry struct {
 	Raw        string                 `json:"raw"`
 	Fields     map[string]interface{} `json:"fields,omitempty"`
 	ParseError string                 `json:"parseError,omitempty"`
+}
+
+type stringList []string
+
+func (s *stringList) String() string {
+	return strings.Join(*s, ",")
+}
+
+func (s *stringList) Set(value string) error {
+	*s = append(*s, value)
+	return nil
 }
 
 type LogStore struct {
@@ -145,14 +157,26 @@ func main() {
 	port := flag.Int("port", defaultPort, "Port to bind")
 	maxEntries := flag.Int("max", defaultMaxEntries, "Max log entries to keep in memory")
 	debugLatency := flag.Bool("debug-latency", false, "Include sentMs in SSE payloads")
+	var filters stringList
+	var channels stringList
+	flag.Var(&filters, "filter", "Filter expression (repeatable)")
+	flag.Var(&channels, "channel", "Channel filter shorthand (repeatable)")
+	flag.Usage = func() {
+		printUsage(flag.CommandLine.Output(), os.Args[0])
+	}
 	flag.Parse()
 
+	initialFilters := buildInitialFilters(filters, channels)
+	filterExpressions, err := parseFilterExpressions(initialFilters)
+	if err != nil {
+		log.Fatalf("invalid filter: %v", err)
+	}
 	store := NewLogStore(*maxEntries)
 	hub := NewHub()
 	go hub.Run()
 
 	go func() {
-		if err := readStdin(store, hub, *debugLatency); err != nil {
+		if err := readStdin(store, hub, *debugLatency, filterExpressions); err != nil {
 			log.Printf("stdin read error: %v", err)
 		}
 	}()
@@ -165,7 +189,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/events", serveEvents(hub))
 	mux.HandleFunc("/logs", serveLogs(store))
-	mux.HandleFunc("/config", serveConfig(store))
+	mux.HandleFunc("/config", serveConfig(store, initialFilters))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
@@ -183,7 +207,7 @@ func main() {
 	}
 }
 
-func readStdin(store *LogStore, hub *Hub, includeSentMs bool) error {
+func readStdin(store *LogStore, hub *Hub, includeSentMs bool, filters []filterExpression) error {
 	scanner := bufio.NewScanner(os.Stdin)
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, maxScanTokenSize)
@@ -200,6 +224,9 @@ func readStdin(store *LogStore, hub *Hub, includeSentMs bool) error {
 			}
 		} else {
 			entry = parseLine(line)
+		}
+		if !passesFilterExpressions(entry, filters) {
+			continue
 		}
 		entry = store.Add(entry)
 		if includeSentMs {
@@ -265,12 +292,17 @@ func serveLogs(store *LogStore) http.HandlerFunc {
 	}
 }
 
-func serveConfig(store *LogStore) http.HandlerFunc {
+func serveConfig(store *LogStore, initialFilters []string) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]int{
-			"maxEntries": store.Max(),
-		})
+		response := struct {
+			MaxEntries int      `json:"maxEntries"`
+			Filters    []string `json:"filters,omitempty"`
+		}{
+			MaxEntries: store.Max(),
+			Filters:    nilIfEmpty(initialFilters),
+		}
+		_ = json.NewEncoder(w).Encode(response)
 	}
 }
 
@@ -467,4 +499,61 @@ func displayHost(host string) string {
 	default:
 		return host
 	}
+}
+
+func buildInitialFilters(filters []string, channels []string) []string {
+	initial := make([]string, 0, len(filters)+len(channels))
+	for _, filter := range filters {
+		if trimmed := strings.TrimSpace(filter); trimmed != "" {
+			initial = append(initial, trimmed)
+		}
+	}
+	for _, channel := range channels {
+		trimmed := strings.TrimSpace(channel)
+		if trimmed == "" {
+			continue
+		}
+		initial = append(initial, fmt.Sprintf(".channel = %s", trimmed))
+	}
+	return initial
+}
+
+func nilIfEmpty(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	return values
+}
+
+func printUsage(w io.Writer, name string) {
+	_, _ = fmt.Fprintf(w, "Usage of %s:\n", name)
+	flag.CommandLine.VisitAll(func(f *flag.Flag) {
+		usage := f.Usage
+		if usage == "" {
+			return
+		}
+		def := formatDefaultValue(f.DefValue)
+		if def != "" {
+			usage = fmt.Sprintf("%s (default %s)", usage, def)
+		}
+		_, _ = fmt.Fprintf(w, "  --%s %s\n        %s\n", f.Name, valueTypeHint(f), usage)
+	})
+}
+
+func formatDefaultValue(value string) string {
+	if value == "" || value == "0" || value == "false" {
+		return ""
+	}
+	return fmt.Sprintf("%q", value)
+}
+
+func valueTypeHint(flagDef *flag.Flag) string {
+	if _, ok := flagDef.Value.(interface{ IsBoolFlag() bool }); ok {
+		return ""
+	}
+	name, _ := flag.UnquoteUsage(flagDef)
+	if name == "" {
+		name = "value"
+	}
+	return name
 }

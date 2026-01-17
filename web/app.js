@@ -35,7 +35,8 @@ const state = {
   showPlain: true,
   showChannel: false,
   darkMode: false,
-  showTags: false,
+  mapRaw: "",
+  mapPaths: [["msg"]],
   minLevel: "all",
   maxLevel: "all",
   filters: [],
@@ -60,6 +61,7 @@ const dom = {};
 const statusClassNames = ["status-green", "status-orange", "status-red", "status-blue"];
 const filterInputDelay = 150;
 let filterInputTimer = null;
+let mapInputTimer = null;
 let pendingFilterRaw = "";
 let pendingFilterExpression = null;
 let isUserTyping = false;
@@ -83,6 +85,7 @@ function init() {
   initLatencyDebug();
   loadStoredPreferences();
   loadStoredFilters();
+  applyMapExpression(state.mapRaw, false);
   syncToggleButtons();
   bindEvents();
   isWideLayout = window.innerWidth >= 1200;
@@ -92,7 +95,6 @@ function init() {
   loadInitialLogs().finally(connectStream);
   dom.logList.classList.toggle("wrap", state.wrap);
   dom.logList.classList.toggle("alt", state.altRows);
-  dom.logList.classList.toggle("tags-on", state.showTags);
   dom.logList.classList.toggle("channel-on", state.showChannel);
   renderFilterTags();
   updateExportButton();
@@ -111,15 +113,17 @@ function cacheDom() {
   dom.levelMaxLabel = document.getElementById("levelMaxLabel");
   dom.channelButtons = document.getElementById("channelButtons");
   dom.filterInput = document.getElementById("filterInput");
+  dom.mapInput = document.getElementById("mapInput");
+  dom.mapInputTag = document.getElementById("mapInputTag");
   dom.toggleAuto = document.getElementById("toggleAuto");
   dom.toggleWrap = document.getElementById("toggleWrap");
   dom.toggleAlt = document.getElementById("toggleAlt");
   dom.togglePlain = document.getElementById("togglePlain");
   dom.toggleChannel = document.getElementById("toggleChannel");
   dom.toggleDark = document.getElementById("toggleDark");
-  dom.toggleTags = document.getElementById("toggleTags");
   dom.pauseBtn = document.getElementById("pauseBtn");
   dom.exportBtn = document.getElementById("exportBtn");
+  dom.copyBtn = document.getElementById("copyBtn");
   dom.clearBtn = document.getElementById("clearBtn");
   dom.pauseBtnFloat = document.getElementById("pauseBtnFloat");
   dom.exportBtnFloat = document.getElementById("exportBtnFloat");
@@ -127,6 +131,7 @@ function cacheDom() {
   dom.pauseBtnFloatLabel = dom.pauseBtnFloat
     ? dom.pauseBtnFloat.querySelector(".log-action-label")
     : null;
+  dom.copyBtnLabel = dom.copyBtn ? dom.copyBtn.querySelector("span") : null;
   dom.closeBtn = document.getElementById("closeBtn");
   dom.countTotal = document.getElementById("countTotal");
   dom.countFiltered = document.getElementById("countFiltered");
@@ -220,6 +225,15 @@ function bindEvents() {
     }, filterInputDelay);
   });
 
+  if (dom.mapInput) {
+    dom.mapInput.addEventListener("input", () => {
+      clearTimeout(mapInputTimer);
+      mapInputTimer = setTimeout(() => {
+        handleMapInputChange();
+      }, filterInputDelay);
+    });
+  }
+
   dom.toggleAuto.addEventListener("click", () => {
     state.autoScroll = !state.autoScroll;
     setToggleButtonState(dom.toggleAuto, state.autoScroll);
@@ -264,14 +278,6 @@ function bindEvents() {
     setTheme(!state.darkMode);
   });
 
-  dom.toggleTags.addEventListener("click", () => {
-    state.showTags = !state.showTags;
-    setToggleButtonState(dom.toggleTags, state.showTags);
-    dom.logList.classList.toggle("tags-on", state.showTags);
-    renderAll();
-    persistPreferences();
-  });
-
   const handlePause = () => {
     setPaused(!state.paused);
   };
@@ -286,6 +292,13 @@ function bindEvents() {
   dom.exportBtn.addEventListener("click", handleExport);
   if (dom.exportBtnFloat) {
     dom.exportBtnFloat.addEventListener("click", handleExport);
+  }
+
+  const handleCopy = () => {
+    copySelected();
+  };
+  if (dom.copyBtn) {
+    dom.copyBtn.addEventListener("click", handleCopy);
   }
 
   const handleClear = () => {
@@ -374,7 +387,6 @@ function syncToggleButtons() {
   setToggleButtonState(dom.togglePlain, state.showPlain);
   setToggleButtonState(dom.toggleChannel, state.showChannel);
   setToggleButtonState(dom.toggleDark, state.darkMode);
-  setToggleButtonState(dom.toggleTags, state.showTags);
 }
 
 function setToggleButtonState(button, isOn) {
@@ -452,11 +464,11 @@ function loadStoredPreferences() {
   if (typeof prefs.altRows === "boolean") state.altRows = prefs.altRows;
   if (typeof prefs.showPlain === "boolean") state.showPlain = prefs.showPlain;
   if (typeof prefs.showChannel === "boolean") state.showChannel = prefs.showChannel;
-  if (typeof prefs.showTags === "boolean") state.showTags = prefs.showTags;
   
   // Restore level range
   if (typeof prefs.minLevel === "string") state.minLevel = prefs.minLevel;
   if (typeof prefs.maxLevel === "string") state.maxLevel = prefs.maxLevel;
+  if (typeof prefs.mapRaw === "string") state.mapRaw = prefs.mapRaw;
   
   // Restore selected channels
   if (Array.isArray(prefs.selectedChannels)) {
@@ -467,7 +479,6 @@ function loadStoredPreferences() {
   if (dom.logList) {
     dom.logList.classList.toggle("wrap", state.wrap);
     dom.logList.classList.toggle("alt", state.altRows);
-    dom.logList.classList.toggle("tags-on", state.showTags);
     dom.logList.classList.toggle("channel-on", state.showChannel);
   }
   
@@ -491,9 +502,9 @@ function persistPreferences() {
       altRows: state.altRows,
       showPlain: state.showPlain,
       showChannel: state.showChannel,
-      showTags: state.showTags,
       minLevel: state.minLevel,
       maxLevel: state.maxLevel,
+      mapRaw: state.mapRaw,
       selectedChannels: Array.from(state.selectedChannels),
     };
     localStorage.setItem(prefsStorageKey, JSON.stringify(prefs));
@@ -538,8 +549,46 @@ function loadConfig() {
       if (config && Number.isFinite(config.maxEntries)) {
         state.clientMax = config.maxEntries;
       }
+      if (config && Array.isArray(config.filters)) {
+        applyConfigFilters(config.filters);
+      }
     })
     .catch(() => {});
+}
+
+function applyConfigFilters(rawFilters) {
+  if (!Array.isArray(rawFilters) || rawFilters.length === 0) {
+    return;
+  }
+  const nextFilters = [];
+  let nextId = 1;
+  for (const rawValue of rawFilters) {
+    if (typeof rawValue !== "string") {
+      continue;
+    }
+    const value = rawValue.trim();
+    if (!value) {
+      continue;
+    }
+    const result = parseFilterExpression(value);
+    if (!result.ok) {
+      continue;
+    }
+    nextFilters.push({
+      id: nextId++,
+      raw: value,
+      expression: result.expression,
+      server: true,
+    });
+  }
+  if (!nextFilters.length) {
+    return;
+  }
+  state.filters = nextFilters;
+  state.nextFilterId = nextId;
+  persistFilters();
+  renderFilterTags();
+  renderAll();
 }
 
 function loadInitialLogs() {
@@ -809,7 +858,7 @@ function filterKey() {
     channelKey(),
     state.showPlain,
     state.showChannel,
-    state.showTags,
+    state.mapRaw,
     state.filters.map((filter) => filter.raw).join(","),
     state.draftFilterRaw,
   ].join("|");
@@ -1052,6 +1101,23 @@ function handleFilterInputChange() {
   scheduleDraftFilterUpdate(raw, parsed.expression);
 }
 
+function handleMapInputChange() {
+  if (!dom.mapInput) {
+    return;
+  }
+  const raw = dom.mapInput.value.trim();
+  const parsed = parseMapExpression(raw);
+  if (!parsed.ok) {
+    setMapInputState("invalid");
+    return;
+  }
+  setMapInputState("neutral");
+  state.mapRaw = raw;
+  state.mapPaths = parsed.paths;
+  renderAll();
+  persistPreferences();
+}
+
 function updateDraftFilter(raw, expression) {
   if (state.draftFilterRaw === raw) {
     state.draftFilter = expression;
@@ -1097,6 +1163,13 @@ function setFilterInputState(stateName) {
   dom.filterInputTag.classList.toggle("invalid", stateName === "invalid");
 }
 
+function setMapInputState(stateName) {
+  if (!dom.mapInputTag) {
+    return;
+  }
+  dom.mapInputTag.classList.toggle("invalid", stateName === "invalid");
+}
+
 function addFilterFromInput() {
   const raw = dom.filterInput.value.trim();
   if (!raw) {
@@ -1134,16 +1207,19 @@ function renderFilterTags() {
   const fragment = document.createDocumentFragment();
   for (const filter of state.filters) {
     const tag = document.createElement("div");
-    tag.className = "filter-tag";
+    tag.className = filter.server ? "filter-tag server-filter" : "filter-tag";
     const text = document.createElement("span");
     text.className = "filter-tag-text";
     text.textContent = filter.raw;
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "filter-remove";
-    remove.textContent = "x";
-    remove.addEventListener("click", () => removeFilter(filter.id));
-    tag.append(text, remove);
+    tag.append(text);
+    if (!filter.server) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "filter-remove";
+      remove.textContent = "x";
+      remove.addEventListener("click", () => removeFilter(filter.id));
+      tag.append(remove);
+    }
     fragment.appendChild(tag);
   }
   dom.logFilters.appendChild(fragment);
@@ -1153,6 +1229,10 @@ function renderFilterTags() {
 }
 
 function removeFilter(id) {
+  const target = state.filters.find((filter) => filter.id === id);
+  if (target && target.server) {
+    return;
+  }
   state.filters = state.filters.filter((filter) => filter.id !== id);
   persistFilters();
   renderFilterTags();
@@ -1199,6 +1279,108 @@ function parseFilterExpression(input) {
       value: opResult.value,
     },
   };
+}
+
+function applyMapExpression(raw, updateInput = true) {
+  const normalized = raw ? raw.trim() : "";
+  const parsed = parseMapExpression(normalized);
+  if (!parsed.ok) {
+    state.mapRaw = "";
+    state.mapPaths = [["msg"]];
+    setMapInputState("neutral");
+    if (dom.mapInput && updateInput) {
+      dom.mapInput.value = "";
+    }
+    return;
+  }
+  state.mapRaw = normalized;
+  state.mapPaths = parsed.paths;
+  setMapInputState("neutral");
+  if (dom.mapInput && updateInput) {
+    dom.mapInput.value = normalized || "";
+  }
+}
+
+function parseMapExpression(input) {
+  const raw = input.trim();
+  if (!raw) {
+    return { ok: true, paths: [["msg"]] };
+  }
+  const parts = splitMapPaths(raw);
+  if (!parts.length) {
+    return { ok: true, paths: [["msg"]] };
+  }
+  const paths = [];
+  for (const part of parts) {
+    const pathResult = parsePathExpression(part);
+    if (!pathResult.ok) {
+      return pathResult;
+    }
+    if (pathResult.rest.trim()) {
+      return { ok: false, error: "Map must be path expressions." };
+    }
+    paths.push(pathResult.path);
+  }
+  return { ok: true, paths };
+}
+
+function splitMapPaths(input) {
+  const parts = [];
+  let current = "";
+  let inSingle = false;
+  let inDouble = false;
+  let bracketDepth = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    const ch = input[i];
+    if (ch === "\\" && (inSingle || inDouble)) {
+      const next = input[i + 1];
+      if (next) {
+        current += ch + next;
+        i += 1;
+        continue;
+      }
+    }
+    if (!inDouble && ch === "'" && !inSingle) {
+      inSingle = true;
+      current += ch;
+      continue;
+    }
+    if (inSingle && ch === "'") {
+      inSingle = false;
+      current += ch;
+      continue;
+    }
+    if (!inSingle && ch === "\"" && !inDouble) {
+      inDouble = true;
+      current += ch;
+      continue;
+    }
+    if (inDouble && ch === "\"") {
+      inDouble = false;
+      current += ch;
+      continue;
+    }
+    if (!inSingle && !inDouble) {
+      if (ch === "[") {
+        bracketDepth += 1;
+      } else if (ch === "]" && bracketDepth > 0) {
+        bracketDepth -= 1;
+      } else if (ch === "," && bracketDepth === 0) {
+        const trimmed = current.trim();
+        if (trimmed) {
+          parts.push(trimmed);
+        }
+        current = "";
+        continue;
+      }
+    }
+    current += ch;
+  }
+  const trimmed = current.trim();
+  if (trimmed) {
+    parts.push(trimmed);
+  }
+  return parts;
 }
 
 function parseMessageContainsShorthand(expr) {
@@ -1380,11 +1562,14 @@ function parseOperatorAndValue(input) {
     }
     return { ok: true, operator, value: value.value };
   }
-  const symbolMatch = trimmed.match(/^(==|!=|>=|<=|>|<)/);
+  const symbolMatch = trimmed.match(/^(==|!=|>=|<=|>|<|=)/);
   if (!symbolMatch) {
     return { ok: false, error: "Expected an operator." };
   }
-  const operator = symbolMatch[1];
+  let operator = symbolMatch[1];
+  if (operator === "=") {
+    operator = "==";
+  }
   const rest = trimmed.slice(symbolMatch[0].length).trim();
   const value = parseValueLiteral(rest);
   if (!value.ok) {
@@ -1641,12 +1826,22 @@ function buildRow(entry) {
   levelText.textContent = level.toUpperCase();
   levelCell.appendChild(levelText);
 
-  const msgCell = document.createElement("div");
-  msgCell.className = "cell message-cell";
-  const message = document.createElement("div");
-  message.className = "message";
-  message.textContent = sanitizeMessage(entry.msg || entry.raw || "");
-  msgCell.appendChild(message);
+  const mappedValues = formatMappedValues(entry);
+  const mapCellCount = Math.max(1, mappedValues.length);
+  const baseColumns = state.showChannel
+    ? "140px 30px 60px"
+    : "140px 30px";
+  row.style.gridTemplateColumns = `${baseColumns} ${"minmax(0, 1fr) ".repeat(mapCellCount).trim()}`;
+  const messageCells = mappedValues.length ? mappedValues : [""];
+  const msgCells = messageCells.map((value) => {
+    const msgCell = document.createElement("div");
+    msgCell.className = "cell message-cell";
+    const message = document.createElement("div");
+    message.className = "message";
+    message.textContent = sanitizeMessage(value);
+    msgCell.appendChild(message);
+    return msgCell;
+  });
 
   let channelCell = null;
   if (state.showChannel) {
@@ -1658,24 +1853,10 @@ function buildRow(entry) {
     channelCell.appendChild(channelText);
   }
 
-  if (state.showTags) {
-    const tagsCell = document.createElement("div");
-    tagsCell.className = "cell tags-cell";
-    const tags = buildTags(entry);
-    if (tags.childNodes.length > 0) {
-      tagsCell.appendChild(tags);
-    }
-    if (channelCell) {
-      row.append(timeCell, levelCell, channelCell, msgCell, tagsCell);
-    } else {
-      row.append(timeCell, levelCell, msgCell, tagsCell);
-    }
+  if (channelCell) {
+    row.append(timeCell, levelCell, channelCell, ...msgCells);
   } else {
-    if (channelCell) {
-      row.append(timeCell, levelCell, channelCell, msgCell);
-    } else {
-      row.append(timeCell, levelCell, msgCell);
-    }
+    row.append(timeCell, levelCell, ...msgCells);
   }
 
   row.addEventListener("mousedown", (event) => {
@@ -1696,54 +1877,6 @@ function buildRow(entry) {
   return row;
 }
 
-function buildTags(entry) {
-  const container = document.createElement("div");
-  container.className = "tags";
-  if (!entry.fields) {
-    return container;
-  }
-
-  const exclude = new Set([
-    "msg",
-    "message",
-    "event",
-    "error",
-    "err",
-    "level",
-    "severity",
-    "lvl",
-    "level_name",
-    "time",
-    "timestamp",
-    "ts",
-    "@timestamp",
-    "channel",
-    "chanel",
-  ]);
-
-  for (const [key, value] of Object.entries(entry.fields)) {
-    if (exclude.has(key)) {
-      continue;
-    }
-    const tag = document.createElement("span");
-    tag.className = "tag";
-    tag.textContent = formatTag(key, value);
-    container.appendChild(tag);
-  }
-
-  return container;
-}
-
-
-function formatTag(key, value) {
-  if (value === undefined || value === null) {
-    return key;
-  }
-  if (typeof value === "object") {
-    return `${key}=${JSON.stringify(value)}`;
-  }
-  return `${key}=${String(value)}`;
-}
 
 function formatChannel(value) {
   if (!isChannelSpecified(value)) {
@@ -2172,6 +2305,9 @@ function updateExportButton() {
     dom.selectedCount.style.display = "none";
     dom.selectedSep.style.display = "none";
   }
+  if (dom.copyBtn) {
+    dom.copyBtn.disabled = count === 0;
+  }
 }
 
 function exportSelected() {
@@ -2217,6 +2353,33 @@ function exportSelected() {
   URL.revokeObjectURL(url);
 }
 
+function copySelected() {
+  if (!state.selectedIds.size) {
+    return;
+  }
+  const entries = collectSelectedEntries();
+  if (!entries.length) {
+    return;
+  }
+  const lines = entries.map((entry) => formatExportLine(entry));
+  const content = `${lines.join("\n")}\n`;
+  copyText(content, dom.copyBtnLabel || dom.copyBtn, "Copy");
+}
+
+function collectSelectedEntries() {
+  const ids = getVisibleRowIds();
+  const entries = [];
+  for (const id of ids) {
+    if (state.selectedIds.has(id)) {
+      const entry = state.logs.find((log) => log.id === id);
+      if (entry) {
+        entries.push(entry);
+      }
+    }
+  }
+  return entries;
+}
+
 function formatExportLine(entry) {
   if (isPlainEntry(entry)) {
     return String(entry.raw || "");
@@ -2254,7 +2417,8 @@ function selectEntry(id) {
   dom.detailChannel.textContent = formatChannel(getChannelValue(entry));
   dom.detailPid.textContent = formatDetailValue(getFieldValue(entry, "pid"));
   dom.detailHostname.textContent = formatDetailValue(getFieldValue(entry, "hostname"));
-  dom.detailMessage.textContent = entry.msg || entry.raw || "-";
+  const mappedValues = formatMappedValues(entry).filter((value) => value !== "");
+  dom.detailMessage.textContent = mappedValues.join(" | ") || entry.msg || entry.raw || "-";
   dom.detailParseError.textContent = entry.parseError || "-";
   dom.detailRaw.textContent = entry.raw || "";
   renderDetailFields(entry);
@@ -2291,6 +2455,26 @@ function clearDetailPanel() {
 
 function sanitizeMessage(value) {
   return String(value).replace(/[\r\n]+/g, " ");
+}
+
+function formatMappedValues(entry) {
+  const scope = buildFilterScope(entry);
+  const paths = state.mapPaths && state.mapPaths.length ? state.mapPaths : [["msg"]];
+  return paths.map((path) => formatMapValue(getValueAtPath(scope, path)));
+}
+
+function formatMapValue(value) {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch (err) {
+      return String(value);
+    }
+  }
+  return String(value);
 }
 
 function copyRaw() {
