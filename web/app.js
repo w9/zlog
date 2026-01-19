@@ -90,7 +90,7 @@ function init() {
   initLatencyDebug();
   loadStoredPreferences();
   loadStoredFilters();
-  applyMapExpression(state.mapRaw, false);
+  applyMapExpression(state.mapRaw, true);
   syncToggleButtons();
   bindEvents();
   isWideLayout = window.innerWidth >= 1200;
@@ -120,6 +120,7 @@ function cacheDom() {
   dom.filterInput = document.getElementById("filterInput");
   dom.mapInput = document.getElementById("mapInput");
   dom.mapInputTag = document.getElementById("mapInputTag");
+  dom.mapClearBtn = document.getElementById("mapClearBtn");
   dom.toggleAuto = document.getElementById("toggleAuto");
   dom.toggleWrap = document.getElementById("toggleWrap");
   dom.toggleAlt = document.getElementById("toggleAlt");
@@ -236,6 +237,23 @@ function bindEvents() {
       mapInputTimer = setTimeout(() => {
         handleMapInputChange();
       }, filterInputDelay);
+    });
+  }
+  if (dom.mapClearBtn) {
+    dom.mapClearBtn.addEventListener("click", () => {
+      if (dom.mapInput) {
+        dom.mapInput.value = "";
+      }
+      applyMapExpression("", false);
+      renderAll();
+      persistPreferences();
+      updateMapClearVisibility("");
+    });
+    dom.mapClearBtn.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        dom.mapClearBtn.click();
+      }
     });
   }
 
@@ -1179,6 +1197,7 @@ function handleMapInputChange() {
     return;
   }
   const raw = dom.mapInput.value.trim();
+  updateMapClearVisibility(raw);
   const parsed = parseMapExpression(raw);
   if (!parsed.ok) {
     setMapInputState("invalid");
@@ -1189,6 +1208,13 @@ function handleMapInputChange() {
   state.mapPaths = parsed.paths;
   renderAll();
   persistPreferences();
+}
+
+function updateMapClearVisibility(value) {
+  if (!dom.mapClearBtn) {
+    return;
+  }
+  dom.mapClearBtn.classList.toggle("visible", Boolean(value && value.trim()));
 }
 
 function updateDraftFilter(raw, expression) {
@@ -1364,6 +1390,7 @@ function applyMapExpression(raw, updateInput = true) {
     if (dom.mapInput && updateInput) {
       dom.mapInput.value = "";
     }
+    updateMapClearVisibility("");
     return;
   }
   state.mapRaw = normalized;
@@ -1372,6 +1399,7 @@ function applyMapExpression(raw, updateInput = true) {
   if (dom.mapInput && updateInput) {
     dom.mapInput.value = normalized || "";
   }
+  updateMapClearVisibility(normalized);
 }
 
 function parseMapExpression(input) {
@@ -2646,14 +2674,16 @@ function handleKeydown(event) {
       clearSelection();
       break;
     case "j":
+    case "J":
     case "ArrowDown":
       event.preventDefault();
-      selectRelative(1);
+      selectRelative(1, event.shiftKey);
       break;
     case "k":
+    case "K":
     case "ArrowUp":
       event.preventDefault();
-      selectRelative(-1);
+      selectRelative(-1, event.shiftKey);
       break;
     case " ":
     case "Spacebar":
@@ -2688,7 +2718,7 @@ function isTypingTarget(target) {
   return target.isContentEditable;
 }
 
-function selectRelative(delta) {
+function selectRelative(delta, extend = false) {
   const rows = Array.from(dom.logList.querySelectorAll(".log-row"));
   if (!rows.length) {
     return;
@@ -2707,9 +2737,34 @@ function selectRelative(delta) {
     return;
   }
 
-  setSingleSelection(id);
+  if (extend) {
+    extendSelectionTo(id);
+  } else {
+    setSingleSelection(id);
+  }
   row.scrollIntoView({ block: "nearest" });
   setStickToBottom(isAtBottom());
+}
+
+function extendSelectionTo(id) {
+  const anchor = state.anchorId ?? state.selectedId ?? id;
+  const rangeIds = getRangeIds(anchor, id);
+  if (!rangeIds.length) {
+    setSingleSelection(id);
+    return;
+  }
+  state.selectedIds.clear();
+  for (const rangeId of rangeIds) {
+    state.selectedIds.add(rangeId);
+  }
+  if (state.anchorId === null) {
+    state.anchorId = anchor;
+  }
+  state.selectedId = id;
+  state.selectedIds.add(id);
+  updateRowSelectionUI();
+  selectEntry(id);
+  updateExportButton();
 }
 
 function scrollByPage(direction) {

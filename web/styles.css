@@ -323,13 +323,15 @@ body::after {
   height: 32px;
   display: flex;
   align-items: center;
-  margin: 0 24px;
+  margin: 0 12px;
+  --range-thumb-size: 28px;
+  padding: 0 calc(var(--range-thumb-size) / 2);
 }
 
 .range-track {
   position: absolute;
-  left: 10px;
-  right: 10px;
+  left: 0;
+  right: 0;
   top: 50%;
   height: 6px;
   border-radius: 999px;
@@ -350,8 +352,8 @@ body::after {
   -webkit-appearance: none;
   appearance: none;
   position: absolute;
-  left: 10px;
-  right: 10px;
+  left: 0;
+  right: 0;
   height: 32px;
   background: transparent;
   margin: 0;
@@ -367,8 +369,8 @@ body::after {
   -webkit-appearance: none;
   appearance: none;
   pointer-events: auto;
-  width: 28px;
-  height: 28px;
+  width: var(--range-thumb-size);
+  height: var(--range-thumb-size);
   border-radius: 999px;
   border: none;
   background: transparent;
@@ -384,8 +386,8 @@ body::after {
 
 .range-input::-moz-range-thumb {
   pointer-events: auto;
-  width: 28px;
-  height: 28px;
+  width: var(--range-thumb-size);
+  height: var(--range-thumb-size);
   border-radius: 999px;
   border: none;
   background: transparent;
@@ -683,7 +685,7 @@ body::after {
 .map-input-tag {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid var(--input-border);
@@ -713,11 +715,30 @@ body::after {
   border-radius: 0;
   background: transparent;
   color: var(--filter-text);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   line-height: 1;
   flex-shrink: 0;
   cursor: help;
   position: relative;
+}
+
+.map-clear {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0 2px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--filter-text);
+  font-size: 0.7rem;
+  line-height: 1;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.map-clear.visible {
+  display: inline-flex;
 }
 
 .filter-help-tooltip {
