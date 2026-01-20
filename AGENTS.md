@@ -20,3 +20,8 @@ go run .
 go build -o zlog
 ./scripts/feed-log.sh --file log.txt --min 0.1 --max 2 --burst 25 | go run .
 ```
+
+## Rules
+
+- Always make a git commit whenever makes sense.
+- Check TODO items in the TODO.md file when they are done.
