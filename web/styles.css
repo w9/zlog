@@ -44,8 +44,8 @@
   --tooltip-shadow: 0 12px 20px rgba(31, 27, 22, 0.28);
   --tooltip-code-bg: rgba(255, 255, 255, 0.12);
   --level-trace: #6b7280;
-  --level-debug: #2563eb;
-  --level-info: #0f766e;
+  --level-debug: #0f766e;
+  --level-info: #2563eb;
   --level-warn: #b45309;
   --level-error: #b91c1c;
   --level-fatal: #7f1d1d;
@@ -593,7 +593,6 @@ body::after {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  padding-bottom: 12px;
 }
 
 .detail-panel {
@@ -603,6 +602,36 @@ body::after {
 .log-panel {
   position: relative;
   contain: layout style;
+}
+
+.log-progress {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  display: none;
+  z-index: 2;
+}
+
+.log-panel.rendering .log-progress {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.log-panel.rendering .log-list {
+  display: none;
+}
+
+.log-panel.rendering .scroll-bottom-btn {
+  display: none;
 }
 
 .resize-placeholder {

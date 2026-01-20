@@ -51,6 +51,12 @@ const state = {
   statusMeta: "",
   latencyMeta: "",
   debugLatency: false,
+  debugPerf: false,
+  perfLimit: null,
+  renderToken: 0,
+  renderInProgress: false,
+  needsRender: false,
+  renderBaseLength: 0,
   stickToBottom: true,
   channelOptions: new Set(),
   hasUnspecifiedChannel: false,
@@ -78,6 +84,10 @@ const latencyStats = {
   lastUpdate: 0,
   updateEveryMs: 1000,
 };
+const perfStats = {
+  lastRenderMs: 0,
+  lastRenderCount: 0,
+};
 const RESIZE_HIDE_CLASS = "resizing-window";
 const RESIZE_HIDE_DELAY_MS = 200;
 let resizeHideTimer = null;
@@ -88,6 +98,7 @@ function init() {
   initLevelRange();
   initTheme();
   initLatencyDebug();
+  initPerfDebug();
   loadStoredPreferences();
   loadStoredFilters();
   applyMapExpression(state.mapRaw, true);
@@ -139,6 +150,7 @@ function cacheDom() {
     : null;
   dom.copyBtnLabel = dom.copyBtn ? dom.copyBtn.querySelector("span") : null;
   dom.closeBtn = document.getElementById("closeBtn");
+  dom.logProgress = document.getElementById("logProgress");
   dom.countTotal = document.getElementById("countTotal");
   dom.countFiltered = document.getElementById("countFiltered");
   dom.newCount = document.getElementById("newCount");
@@ -403,6 +415,19 @@ function initLatencyDebug() {
   }
 }
 
+function initPerfDebug() {
+  const params = new URLSearchParams(window.location.search);
+  const debugParam = String(params.get("debug") || "").toLowerCase();
+  state.debugPerf = debugParam === "perf";
+  const limitParam = params.get("limit");
+  if (limitParam) {
+    const parsed = Number.parseInt(limitParam, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      state.perfLimit = parsed;
+    }
+  }
+}
+
 function syncToggleButtons() {
   setToggleButtonState(dom.toggleAuto, state.autoScroll);
   setToggleButtonState(dom.toggleWrap, state.wrap);
@@ -615,12 +640,17 @@ function applyConfigFilters(rawFilters) {
 }
 
 function loadInitialLogs() {
-  return fetch("/logs")
+  const url = state.perfLimit ? `/logs?limit=${state.perfLimit}` : "/logs";
+  return fetch(url)
     .then((response) => response.json())
     .then((data) => {
       if (Array.isArray(data)) {
         state.logs = data;
       }
+      if (state.debugPerf) {
+        console.log(`[perf] initial logs: ${state.logs.length}`);
+      }
+      updateRenderOverlayText(`init ${state.logs.length} logs`);
       renderAll();
     })
     .catch(() => {
@@ -754,6 +784,11 @@ function handleEntry(entry) {
   state.logs.push(entry);
   recordLatency(entry);
   maybeAddChannelOption(entry);
+  if (state.debugPerf && state.renderInProgress && state.logs.length % 1000 === 0) {
+    console.log(
+      `[perf] incoming logs while rendering: total=${state.logs.length} needsRender=${state.needsRender}`,
+    );
+  }
   const extra = state.logs.length - state.clientMax;
   if (extra > 0) {
     trimOverflow(extra);
@@ -780,14 +815,24 @@ function handleEntry(entry) {
 
   const currentKey = filterKey();
   if (currentKey !== state.filterKey) {
+    if (state.debugPerf) {
+      console.log(
+        `[perf] filterKey changed; renderAll (current=${currentKey} prev=${state.filterKey})`,
+      );
+      console.trace("[perf] renderAll caller trace");
+    }
     renderAll();
     return;
   }
 
   if (matchesFilters) {
     const shouldStick = state.autoScroll && state.stickToBottom;
-    appendEntryWithGroup(entry, state.groupState);
-    state.filteredCount += 1;
+    if (state.renderInProgress) {
+      state.needsRender = true;
+    } else {
+      appendEntryWithGroup(entry, state.groupState);
+      state.filteredCount += 1;
+    }
     if (shouldStick) {
       scrollToBottom();
     } else {
@@ -806,6 +851,11 @@ function trimOverflow(extra) {
   const wasAtBottom = isAtBottom();
   const beforeHeight = dom.logList.scrollHeight;
   const removed = state.logs.splice(0, extra);
+  if (state.debugPerf) {
+    console.log(
+      `[perf] trimOverflow extra=${extra} removed=${removed.length} logs=${state.logs.length}`,
+    );
+  }
   let removedVisible = 0;
   let selectionChanged = false;
 
@@ -829,8 +879,7 @@ function trimOverflow(extra) {
 
   if (removedVisible) {
     state.filteredCount = Math.max(0, state.filteredCount - removedVisible);
-    renderAll();
-    return;
+    pruneEmptyGroupHeaders();
   }
 
   if (selectionChanged) {
@@ -851,27 +900,156 @@ function trimOverflow(extra) {
 }
 
 function renderAll() {
+  if (state.renderInProgress) {
+    if (state.debugPerf) {
+      console.log("[perf] renderAll called while rendering; marking needsRender");
+      console.trace("[perf] renderAll caller trace");
+    }
+    state.needsRender = true;
+    return;
+  }
+  if (state.debugPerf) {
+    console.log(
+      `[perf] renderAll begin: needsRender=${state.needsRender} logs=${state.logs.length}`,
+    );
+    console.trace("[perf] renderAll caller trace");
+  }
+  setRenderOverlay(true);
   state.filteredCount = 0;
   dom.logList.innerHTML = "";
   rebuildChannelOptions();
   state.filterKey = filterKey();
 
-  const fragment = document.createDocumentFragment();
+  const renderStart = state.debugPerf ? performance.now() : 0;
+  const entries = state.logs;
+  const total = entries.length;
+  state.renderBaseLength = total;
   const visibleIds = [];
   const groupState = { lastJsonTimestampMs: null, hasGroup: false };
-  for (const entry of state.logs) {
-    if (passesFilters(entry)) {
-      appendEntryWithGroup(entry, groupState, fragment);
-      visibleIds.push(entry.id);
-      state.filteredCount += 1;
+  const masterFragment = document.createDocumentFragment();
+  const chunkSize = total > 5000 ? 300 : 600;
+  const token = state.renderToken + 1;
+  if (state.debugPerf) {
+    console.log(
+      `[perf] render start token=${token} total=${total} chunk=${chunkSize} base=${state.renderBaseLength}`,
+    );
+  }
+  state.renderToken = token;
+  state.renderInProgress = true;
+
+  const processChunk = (startIndex) => {
+    if (state.renderToken !== token) {
+      if (state.debugPerf) {
+        console.log(`[perf] render token mismatch; abort token=${token}`);
+      }
+      return;
+    }
+    const fragment = document.createDocumentFragment();
+    let i = startIndex;
+    let processed = 0;
+    for (; i < total && processed < chunkSize; i += 1) {
+      const entry = entries[i];
+      if (passesFilters(entry)) {
+        appendEntryWithGroup(entry, groupState, fragment);
+        visibleIds.push(entry.id);
+        state.filteredCount += 1;
+      }
+      processed += 1;
+    }
+    masterFragment.appendChild(fragment);
+    updateRenderOverlayText(`render ${Math.min(i, total)} / ${total}`);
+    if (i < total) {
+      requestAnimationFrame(() => processChunk(i));
+      return;
+    }
+
+    state.groupState = groupState;
+    state.renderInProgress = false;
+    syncSelectionWithVisible(visibleIds);
+    updateCounts();
+    perfStats.lastRenderMs = performance.now() - renderStart;
+    perfStats.lastRenderCount = state.filteredCount;
+    if (state.debugPerf) {
+      console.log(
+        `[perf] renderAll: ${perfStats.lastRenderMs.toFixed(1)}ms for ${perfStats.lastRenderCount} rows`,
+      );
+    }
+    updateRenderOverlayText(
+      `render ${perfStats.lastRenderMs.toFixed(0)}ms · ${perfStats.lastRenderCount}`,
+    );
+    dom.logList.appendChild(masterFragment);
+    setRenderOverlay(false);
+    if (state.autoScroll && state.stickToBottom && !state.paused) {
+      scrollToBottom();
+    }
+    setStickToBottom(isAtBottom());
+    if (state.needsRender) {
+      if (state.debugPerf) {
+        console.log("[perf] render completed; catching up with missed entries");
+      }
+      state.needsRender = false;
+      appendMissedEntries(state.renderBaseLength);
+    }
+  };
+
+  processChunk(0);
+}
+
+function pruneEmptyGroupHeaders() {
+  const children = Array.from(dom.logList.children);
+  for (let i = 0; i < children.length; i += 1) {
+    const node = children[i];
+    if (!node.classList.contains("log-group")) {
+      continue;
+    }
+    const next = children[i + 1];
+    if (!next || next.classList.contains("log-group")) {
+      node.remove();
     }
   }
-  state.groupState = groupState;
+}
 
-  dom.logList.appendChild(fragment);
-  syncSelectionWithVisible(visibleIds);
+function setRenderOverlay(isRendering) {
+  if (dom.logPanel) {
+    dom.logPanel.classList.toggle("rendering", isRendering);
+  }
+  if (!isRendering) {
+    updateRenderOverlayText("");
+  }
+}
+
+function updateRenderOverlayText(text) {
+  if (!dom.logProgress) {
+    return;
+  }
+  dom.logProgress.textContent = text;
+}
+
+function appendMissedEntries(startIndex) {
+  if (startIndex >= state.logs.length) {
+    if (state.debugPerf) {
+      console.log(
+        `[perf] appendMissedEntries skipped start=${startIndex} logs=${state.logs.length}`,
+      );
+    }
+    return;
+  }
+  const shouldStick = state.autoScroll && state.stickToBottom;
+  const total = state.logs.length;
+  let appended = 0;
+  for (let i = startIndex; i < state.logs.length; i += 1) {
+    const entry = state.logs[i];
+    if (passesFilters(entry)) {
+      appendEntryWithGroup(entry, state.groupState);
+      state.filteredCount += 1;
+      appended += 1;
+    }
+  }
+  if (state.debugPerf) {
+    console.log(`[perf] appended ${appended} missed entries (start=${startIndex} total=${total})`);
+  }
   updateCounts();
-  if (state.autoScroll && state.stickToBottom && !state.paused) {
+  if (shouldStick) {
     scrollToBottom();
   }
   setStickToBottom(isAtBottom());
@@ -911,7 +1089,12 @@ function buildGroupHeader(label) {
 }
 
 function formatGroupLabel(entry) {
-  return entry.time || entry.ingested || "No timestamp";
+  const raw = entry.time || entry.ingested || "";
+  const parsed = parseLogTimestamp(raw);
+  if (!Number.isFinite(parsed)) {
+    return raw || "No timestamp";
+  }
+  return new Date(parsed).toLocaleString();
 }
 
 function getEntryTimestampMs(entry) {
